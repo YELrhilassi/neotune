@@ -10,6 +10,7 @@ from src.core.di import Container
 from src.core.strings import Strings
 from src.ui.modals.track_menu import TrackMenuPopup
 from src.core.utils import strip_icons
+from src.core.cache import CacheStore
 
 # Components
 from src.ui.modals.telescope.header import TelescopeHeader, TelescopeInput
@@ -34,8 +35,17 @@ class TelescopePrompt(BaseModal[str]):
 
     def __init__(self, initial_query: str = ""):
         super().__init__()
-        self.initial_query = initial_query
-        self.results_data = {"tracks": [], "albums": [], "playlists": []}
+        self.cache = Container.resolve(CacheStore)
+        
+        saved_state = self.cache.get("telescope_state") or {}
+        
+        if not initial_query and saved_state.get("query"):
+            self.initial_query = saved_state["query"]
+            self.results_data = saved_state.get("results") or {"tracks": [], "albums": [], "playlists": []}
+        else:
+            self.initial_query = initial_query
+            self.results_data = {"tracks": [], "albums": [], "playlists": []}
+            
         self.preview_data = []
 
     def on_mount(self):
@@ -49,6 +59,9 @@ class TelescopePrompt(BaseModal[str]):
             
         self.search_timer = None
         self.fetch_timer = None
+        
+        if self.results_data and any(self.results_data.values()):
+            self.set_timer(0.1, self._refresh_all_lists)
 
     def compose(self) -> ComposeResult:
         with Vertical(id="telescope-wrapper"):
@@ -187,6 +200,10 @@ class TelescopePrompt(BaseModal[str]):
 
     def _handle_search_results(self, results):
         self.results_data = results
+        self.cache.set("telescope_state", {
+            "query": self.input.value,
+            "results": results
+        })
         self._refresh_all_lists()
 
     def _refresh_all_lists(self):
@@ -267,10 +284,24 @@ class TelescopePrompt(BaseModal[str]):
         if event.option_list == preview_list:
             if not self.preview_data or event.option_index >= len(self.preview_data):
                 return
-            uri = self.preview_data[event.option_index].get("uri")
+            
+            track_data = self.preview_data[event.option_index]
+            uri = track_data.get("uri")
             if uri:
+                context_uri = None
+                # If previewing an album or playlist, extract the parent context URI
+                if self.active_category in ["albums", "playlists"]:
+                    try:
+                        results_idx = results_list.highlighted
+                        if results_idx is not None:
+                            parent_data = self.results_data.get(self.active_category, [])[results_idx]
+                            context_uri = parent_data.get("uri")
+                    except Exception:
+                        pass
+                        
                 from src.hooks.usePlayTrack import usePlayTrack
-                if usePlayTrack(uri, self.app): self.app.update_now_playing()
+                if usePlayTrack(uri, self.app, context_uri=context_uri): 
+                    self.app.update_now_playing()
             return
             
         if event.option_list == results_list:
@@ -291,7 +322,16 @@ class TelescopePrompt(BaseModal[str]):
             from src.hooks.useRemoveTrack import useRemoveTrack
             
             if action == "play":
-                if usePlayTrack(uri, self.app): self.app.update_now_playing()
+                # Use properly engineered native playback. If it's a playlist or album, 
+                # Spotify will natively handle continuous playback using the context_uri.
+                # If it's a single track from search, it plays just that track.
+                context_uri = uri if self.active_category in ["albums", "playlists"] else None
+                if context_uri:
+                    if usePlayTrack(uri, self.app, context_uri=context_uri): 
+                        self.app.update_now_playing()
+                else:
+                    if usePlayTrack(uri, self.app): 
+                        self.app.update_now_playing()
             elif action == "radio": useTrackRadio(uri, self.app)
             elif action == "save": useSaveTrack(uri, self.app)
             elif action == "remove": useRemoveTrack(uri, self.app)

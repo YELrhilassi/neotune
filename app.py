@@ -6,6 +6,7 @@ from src.config.user_prefs import UserPreferences
 from src.network.spotify_network import SpotifyNetwork
 from src.network.local_player import LocalPlayer
 from src.core.command_service import CommandService
+from src.core.cache import CacheStore
 from src.ui.terminal_renderer import TerminalRenderer
 from src.ui.screens.setup import SetupScreen
 from src.ui.screens.login import LoginScreen
@@ -18,6 +19,7 @@ def setup_config():
     Container.register(UserPreferences, UserPreferences, singleton=True)
     Container.register(Store, Store, singleton=True)
     Container.register(CommandService, CommandService, singleton=True)
+    Container.register(CacheStore, CacheStore, singleton=True)
 
 def setup_spotify():
     """Register Spotify-dependent services once config is valid."""
