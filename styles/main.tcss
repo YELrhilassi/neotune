@@ -190,23 +190,25 @@ OptionList > .option-list--option-highlighted {
 
 /* Command Prompt (Noice style) */
 CommandPrompt {
-    align: center bottom;
+    align: center middle;
     padding-bottom: 2;
     background: transparent;
 }
 
 #command-prompt-container {
+    align: center middle;
     width: 60%;
-    height: auto;
+    height: 50%;
     background: #181825;
     border: round #cba6f7;
     padding: 1 2;
 }
 
 #command-input {
-    background: #1e1e2e;
+    dock:top;
+    background: transparent;
     color: #cdd6f4;
-    border: none;
+    border: round #cdd6f4 ;
 }
 
 #command-results {
@@ -226,8 +228,8 @@ TelescopePrompt {
 #telescope-wrapper {
     width: 80%;
     height: 80%;
-    background: transparent;
-    border: none;
+    background:  #1e1e2e;
+    border: round #f5c2e7;
     layout: vertical;
 }
 
@@ -236,7 +238,6 @@ TelescopePrompt {
     dock: top;
     border: round #313244;
     background: #1e1e2e;
-    margin-bottom: 1;
 }
 #telescope-header:focus-within {
     border: round #89b4fa; /* Blue active border */
@@ -263,7 +264,7 @@ TelescopePrompt {
     width: 50%;
     height: 1fr;
     border: round #313244;
-    background: #1e1e2e;
+    background: transparent;
     margin-right: 1;
 }
 
@@ -275,7 +276,7 @@ TelescopePrompt {
     width: 50%;
     height: 1fr;
     border: round #313244;
-    background: #1e1e2e;
+    background: transparent;
     padding: 1;
     layout: vertical;
 }

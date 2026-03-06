@@ -9,6 +9,7 @@ from src.network.spotify_network import SpotifyNetwork
 from src.network.local_player import LocalPlayer
 from src.config.user_prefs import UserPreferences
 from src.core.command_service import CommandService
+from spotipy.oauth2 import SpotifyOauthError # Import SpotifyOauthError
 
 from src.ui.components.now_playing import NowPlaying
 from src.ui.components.sidebar import SidebarPanels
@@ -53,12 +54,27 @@ class TerminalRenderer(App):
         
         self.update_now_playing()
         self.set_interval(5.0, self.update_now_playing)
+        self.set_interval(60.0, self.check_authentication) # Proactive auth check
+
+    def check_authentication(self):
+        if not self.network.is_authenticated():
+            self.notify("Authentication expired. Attempting to re-authenticate...", severity="warning")
+            try:
+                self.network.reauthenticate()
+                self.notify("Re-authentication successful.", severity="information")
+                self.refresh_data()
+                self.update_now_playing()
+            except Exception as e:
+                self.notify(f"Re-authentication failed: {e}. Please restart the application.", severity="error")
 
     def refresh_data(self):
         try:
             self.store.set("playlists", self.network.get_playlists())
             self.store.set("featured_playlists", self.network.get_featured_playlists())
             self.store.set("recently_played", self.network.get_recently_played())
+        except SpotifyOauthError as e:
+            self.notify(f"Authentication error during data refresh: {e}. Attempting re-authentication.", severity="error")
+            self.check_authentication()
         except Exception as e:
             self.notify(f"Spotify API Error: {e}", severity="error")
 
@@ -87,6 +103,10 @@ class TerminalRenderer(App):
             return None
         try:
             return func(*args, **kwargs)
+        except SpotifyOauthError as e:
+            self.notify(f"Authentication error: {e}. Attempting re-authentication.", severity="error")
+            self.check_authentication()
+            return None
         except Exception as e:
             self.notify(f"Spotify API Error: {e}", severity="error")
             return None
@@ -102,6 +122,9 @@ class TerminalRenderer(App):
         try:
             playback = self.network.get_current_playback()
             self.store.set("current_playback", playback)
+        except SpotifyOauthError as e:
+            self.notify(f"Authentication error during playback update: {e}. Attempting re-authentication.", severity="error")
+            self.check_authentication()
         except Exception:
             pass 
 

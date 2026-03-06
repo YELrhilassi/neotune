@@ -121,18 +121,21 @@ class TelescopePrompt(BaseModal[str]):
             item_type = item.get("_qtype")
             data = item.get("data")
             
+            if data is None: # Skip if data is None
+                continue
+
             if item_type == "track":
-                artists = ", ".join([a['name'] for a in data['artists']])
-                clean_name = strip_icons(data['name'])
+                artists = ", ".join([a['name'] for a in data.get('artists', []) if a.get('name')])
+                clean_name = strip_icons(data.get('name', 'Unknown Track'))
                 self.results_data.append({"type": "track", "data": data})
                 self.results_list.add_option(f"{Icons.TRACK} {clean_name} - {strip_icons(artists)}")
             elif item_type == "album":
-                artists = ", ".join([a['name'] for a in data['artists']])
-                clean_name = strip_icons(data['name'])
+                artists = ", ".join([a['name'] for a in data.get('artists', []) if a.get('name')])
+                clean_name = strip_icons(data.get('name', 'Unknown Album'))
                 self.results_data.append({"type": "album", "data": data})
                 self.results_list.add_option(f"{Icons.ALBUM} {clean_name} - {strip_icons(artists)}")
             elif item_type == "playlist":
-                clean_name = strip_icons(data['name'])
+                clean_name = strip_icons(data.get('name', 'Unknown Playlist'))
                 owner = data.get('owner', {}).get('display_name', 'Unknown')
                 self.results_data.append({"type": "playlist", "data": data})
                 self.results_list.add_option(f"{Icons.PLAYLIST} {clean_name} - {strip_icons(owner)}")
@@ -152,27 +155,31 @@ class TelescopePrompt(BaseModal[str]):
             self.fetch_timer.stop()
 
         if item["type"] == "track":
-            track = item["data"]
-            artists = ", ".join([strip_icons(a['name']) for a in track.get('artists', [])])
-            album = strip_icons(track.get('album', {}).get('name', 'Unknown'))
+            track = item.get("data")
+            if not track: return
+
+            artists = ", ".join([strip_icons(a['name']) for a in track.get('artists', []) if a and a.get('name')])
+            album_name = strip_icons(track.get('album', {}).get('name', 'Unknown'))
             
             duration_ms = track.get('duration_ms', 0)
             duration_str = f"{duration_ms // 60000}:{(duration_ms % 60000) // 1000:02d}"
             
-            info = f"[bold #a6e3a1]{Icons.TRACK} {strip_icons(track['name'])}[/]\n\n"
+            info = f"[bold #a6e3a1]{Icons.TRACK} {strip_icons(track.get('name', 'Unknown Track'))}[/]\n\n"
             info += f"[#cdd6f4]{Icons.ARTIST} Artist:[/] {artists}\n"
-            info += f"[#cdd6f4]{Icons.ALBUM} Album:[/] {album}\n"
+            info += f"[#cdd6f4]{Icons.ALBUM} Album:[/] {album_name}\n"
             info += f"[#cdd6f4]{Icons.DURATION} Duration:[/] {duration_str}\n"
             
             self.preview_info.update(info)
 
         elif item["type"] == "album":
-            album = item["data"]
-            artists = ", ".join([strip_icons(a['name']) for a in album.get('artists', [])])
+            album = item.get("data")
+            if not album: return
+
+            artists = ", ".join([strip_icons(a['name']) for a in album.get('artists', []) if a and a.get('name')])
             total_tracks = album.get('total_tracks', 0)
             release_date = album.get('release_date', 'Unknown')
             
-            info = f"[bold #f9e2af]{Icons.ALBUM} {strip_icons(album['name'])}[/]\n\n"
+            info = f"[bold #f9e2af]{Icons.ALBUM} {strip_icons(album.get('name', 'Unknown Album'))}[/]\n\n"
             info += f"[#a6e3a1]{Icons.ARTIST} Artist:[/] {artists}\n"
             info += f"[#cba6f7]📅 Release:[/] {release_date}\n"
             info += f"[#89b4fa]{Icons.TRACK} Tracks:[/] {total_tracks}\n"
@@ -186,12 +193,14 @@ class TelescopePrompt(BaseModal[str]):
                 self.fetch_timer = self.set_timer(0.4, lambda: self.fetch_album_tracks(album_id))
 
         elif item["type"] == "playlist":
-            playlist = item["data"]
+            playlist = item.get("data")
+            if not playlist: return
+
             owner = strip_icons(playlist.get('owner', {}).get('display_name', 'Unknown'))
             total_tracks = playlist.get('tracks', {}).get('total', 0)
             desc = strip_icons(playlist.get('description', ''))
             
-            info = f"[bold #89b4fa]{Icons.PLAYLIST} {strip_icons(playlist['name'])}[/]\n\n"
+            info = f"[bold #89b4fa]{Icons.PLAYLIST} {strip_icons(playlist.get('name', 'Unknown Playlist'))}[/]\n\n"
             info += f"[#a6e3a1]{Icons.ARTIST} Owner:[/] {owner}\n"
             info += f"[#cba6f7]{Icons.TRACK} Tracks:[/] {total_tracks}\n"
             if desc:
@@ -228,16 +237,13 @@ class TelescopePrompt(BaseModal[str]):
         if not tracks:
             self.preview_tracks.add_option("No tracks found.")
             return
-            
+
         for t in tracks:
-            name = strip_icons(t.get('name', 'Unknown'))
-            if is_album:
-                # Albums tracks don't always have deep artist info in this endpoint, but usually do
-                artists = ", ".join([a['name'] for a in t.get('artists', [])])
-                self.preview_tracks.add_option(f"{Icons.TRACK} {name} - {strip_icons(artists)}")
-            else:
-                artists = ", ".join([a['name'] for a in t.get('artists', [])])
-                self.preview_tracks.add_option(f"{Icons.TRACK} {name} - {strip_icons(artists)}")
+            if not t: # Skip if track data is None
+                continue
+            name = strip_icons(t.get('name', 'Unknown Track'))
+            artists = ", ".join([a['name'] for a in t.get('artists', []) if a and a.get('name')])
+            self.preview_tracks.add_option(f"{Icons.TRACK} {name} - {strip_icons(artists)}")
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected):
         if event.option_list.id == "telescope-preview-tracks":

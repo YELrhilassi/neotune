@@ -7,6 +7,7 @@ class CommandService:
     def execute(self, action: str, app_instance):
         from src.ui.modals.theme_selector import ThemeSelector
         from src.ui.modals.telescope import TelescopePrompt
+        from src.ui.modals.command_prompt import CommandPrompt
         from src.ui.modals.audio_modals import DeviceSelector, AudioConfigSelector
         
         network = Container.resolve(SpotifyNetwork)
@@ -68,6 +69,8 @@ class CommandService:
                     app_instance.notify(f"Theme '{theme_name}' saved. Restart to apply.", severity="information")
             app_instance.push_screen(ThemeSelector(prefs.theme), on_theme_selected)
         elif action == "command_prompt":
+            app_instance.push_screen(CommandPrompt())
+        elif action == "search_prompt":
             app_instance.push_screen(TelescopePrompt())
         elif action == "toggle_sidebar":
             sidebar = app_instance.query_one("#sidebar")

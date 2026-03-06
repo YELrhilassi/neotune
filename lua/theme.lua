@@ -1,1 +1,1 @@
-spotify_tui.set_theme("dracula")
+spotify_tui.set_theme("tokyo-night")

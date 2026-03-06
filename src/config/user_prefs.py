@@ -23,7 +23,8 @@ class UserPreferences:
             "o": {"action": "show_device", "desc": "Output Device"},
             "a": {"action": "show_audio", "desc": "Audio Backend"},
             "r": {"action": "refresh", "desc": "Refresh Data"},
-            ":": {"action": "command_mode", "desc": "Command Mode"}
+            ":": {"action": "command_prompt", "desc": "Command Mode"},
+            "/": {"action": "search_prompt", "desc": "Search Tracks/Playlists"}
         }
         
         self.commands = {}
