@@ -153,8 +153,14 @@ class TerminalRenderer(App):
             # We are waiting for a leader command
             if event.key == "escape":
                 self.cancel_leader()
+            elif event.key == "left" and self.is_screen_active("WhichKeyPopup"):
+                self.screen.action_previous_page()
+            elif event.key == "right" and self.is_screen_active("WhichKeyPopup"):
+                self.screen.action_next_page()
             elif char:
                 self.handle_leader_command(char)
+            else:
+                self.cancel_leader() # Cancel on any other unhandled non-character key (like F1)
             event.prevent_default()
             return
             
@@ -166,10 +172,6 @@ class TerminalRenderer(App):
                 self.push_screen(WhichKeyPopup())
                 
             event.prevent_default()
-            if self.leader_timer:
-                self.leader_timer.stop()
-            # 3 second timeout for leader
-            self.leader_timer = self.set_timer(3.0, self.cancel_leader)
 
     def cancel_leader(self):
         self.leader_mode = False

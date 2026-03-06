@@ -36,7 +36,7 @@ Screen {
 #now-playing {
     height: auto;
     dock: top;
-    background: #181825;
+    background: #1e1e2e;
     border: round #cba6f7; /* Mauve Accent Border around the whole card */
     margin: 1 2 0 2;
     padding: 1 2;
@@ -72,7 +72,6 @@ Screen {
 #main-container {
     height: 1fr;
     layout: horizontal;
-    background: #1e1e2e;
 }
 
 /* Sidebar and TrackList Panels */
@@ -80,7 +79,6 @@ Screen {
     width: 35;
     height: 1fr;
     dock: left;
-    background: #1e1e2e;
     border: round #313244;
 }
 
@@ -146,22 +144,21 @@ WhichKeyPopup {
     height: auto;
     border: round #cba6f7;
     background: rgba(24, 24, 37, 0.95);
-    padding: 1 2;
-    margin: 1 2;
+    padding: 0 2;
+    margin: 0 1;
 }
 
 #which-key-title {
     content-align: center middle;
-    margin-bottom: 1;
 }
 
-#which-key-grid {
-    layout: grid;
-    grid-size: 2;
-    grid-columns: 1fr 2fr;
-    grid-gutter: 0 2;
-    height: auto;
+#which-key-content {
     width: auto;
+    height: auto;
+}
+
+#which-key-footer {
+    content-align: center middle;
 }
 
 #device-dialog, #audio-config-dialog, #command-dialog, #track-menu-dialog {

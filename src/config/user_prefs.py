@@ -115,23 +115,23 @@ class UserPreferences:
                     self.show_which_key = bool(tui_api.show_which_key)
                 
                 # Extract keybindings
-                lua_kb = getattr(tui_api, "keymaps", None)
+                lua_kb = tui_api.keymaps
                 if lua_kb:
                     # Overwrite default keybindings
                     self.keybindings.clear()
-                    for k in lua_kb:
+                    for k, v in lua_kb.items():
                         self.keybindings[k] = {
-                            "action": lua_kb[k].action,
-                            "desc": lua_kb[k].desc
+                            "action": v.action,
+                            "desc": v.desc
                         }
                         
-                lua_cmds = getattr(tui_api, "commands", None)
+                lua_cmds = tui_api.commands
                 if lua_cmds:
                     self.commands.clear()
-                    for k in lua_cmds:
+                    for k, v in lua_cmds.items():
                         self.commands[k] = {
-                            "action": lua_cmds[k].action,
-                            "desc": lua_cmds[k].desc
+                            "action": v.action,
+                            "desc": v.desc
                         }
                         
                 lua_nav = getattr(tui_api, "nav", None)
