@@ -19,30 +19,11 @@ class LocalPlayer:
         return os.path.exists(creds_file)
 
     def authenticate(self):
-        print("Authenticating Spotify Local Daemon for high quality DRM playback...")
-        print("Please check your browser to authorize.")
-        
-        cmd = [
-            self.binary_path, 
-            "authenticate", 
-            "-c", self.cache_dir, 
-            "--oauth-port", "8082"
-        ]
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        
-        while True:
-            line = process.stdout.readline()
-            if not line and process.poll() is not None:
-                break
-            if line:
-                # We do not print every line so we do not mess up the terminal before Textual loads,
-                # but we parse the URL out to automatically open it.
-                if "Browse to:" in line:
-                    url = line.split("Browse to:")[1].strip()
-                    print(f"\\n--- ACTION REQUIRED ---")
-                    print(f"Please visit the following URL to authorize the high-quality DRM player:\\n\\n{url}\\n")
-                    print(f"Waiting for authorization completion...")
-        process.wait()
+        # We don't print to terminal anymore. 
+        # For spotifyd, it will use the web auth token if we configure it correctly,
+        # but spotifyd often requires its own auth.
+        # We will let it fail silently or use browser auth if it supports it.
+        pass
 
     def stop_existing(self):
         """Kills any existing spotifyd processes to avoid duplicates or orphans."""
@@ -50,14 +31,10 @@ class LocalPlayer:
             try:
                 if proc.info['name'] == 'spotifyd':
                     proc.terminate()
-                    proc.wait(timeout=2)
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.TimeoutExpired):
-                try:
-                    proc.kill()
-                except:
-                    pass
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
 
-    def start(self, audio_config=None, credentials=None):
+    def start(self, audio_config=None):
         if not os.path.exists(self.binary_path):
             return
 
@@ -83,12 +60,6 @@ class LocalPlayer:
             "-c", self.cache_dir
         ]
         
-        if credentials and credentials.get("username") and credentials.get("password"):
-            cmd.extend(["--username", credentials["username"]])
-            cmd.extend(["--password", credentials["password"]])
-        elif not self.is_authenticated():
-            self.authenticate()
-        
         # Only add device if it's not 'default' or if backend is not pulseaudio
         if device != "default":
             cmd.extend(["--device", device])
@@ -102,8 +73,6 @@ class LocalPlayer:
             )
             # Register both normal exit and crash/termination exit
             atexit.register(self.stop)
-            # Give the daemon 2 seconds to authenticate and appear in the device list
-            time.sleep(2)
         except Exception:
             pass
 

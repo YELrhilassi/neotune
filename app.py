@@ -8,64 +8,69 @@ from src.network.local_player import LocalPlayer
 from src.core.command_service import CommandService
 from src.ui.terminal_renderer import TerminalRenderer
 from src.ui.screens.setup import SetupScreen
+from src.ui.screens.login import LoginScreen
 from textual.app import App
 
-def setup_di():
-    # Register core configurations
+def setup_config():
+    """Register essential services that don't depend on Spotify Auth."""
     Container.register(ClientConfiguration, ClientConfiguration, singleton=True)
     Container.register(UserPreferences, UserPreferences, singleton=True)
-    
-    # Register state store
     Container.register(Store, Store, singleton=True)
-    
-    client_config = Container.resolve(ClientConfiguration)
-    
-    if client_config.is_valid():
-        # Create network instance
-        try:
-            network = SpotifyNetwork(client_config)
-            store = Container.resolve(Store)
-            store.set("is_authenticated", True)
-        except Exception as e:
-            network = None
-            store = Container.resolve(Store)
-            store.set("is_authenticated", False)
-            store.set("auth_error", str(e))
-            
-        Container.register(SpotifyNetwork, lambda: network, singleton=True)
-        
-        # Local Player
-        player = LocalPlayer()
-        prefs = Container.resolve(UserPreferences)
-        player.start(
-            audio_config=prefs.audio_config, 
-            credentials={"username": client_config.username, "password": client_config.password}
-        )
-        Container.register(LocalPlayer, lambda: player, singleton=True)
-    else:
-        # Placeholder for DI if not valid yet
-        Container.register(SpotifyNetwork, lambda: None, singleton=True)
-        Container.register(LocalPlayer, lambda: None, singleton=True)
-    
     Container.register(CommandService, CommandService, singleton=True)
 
-class SetupApp(App):
-    CSS_PATH = "styles/main.tcss"
-    def on_mount(self):
-        self.push_screen(SetupScreen())
-
-if __name__ == "__main__":
-    setup_di()
-    
+def setup_spotify():
+    """Register Spotify-dependent services once config is valid."""
     client_config = Container.resolve(ClientConfiguration)
     if not client_config.is_valid():
-        setup_app = SetupApp()
-        result = setup_app.run()
+        return False
+        
+    network = SpotifyNetwork(client_config)
+    Container.register(SpotifyNetwork, lambda: network, singleton=True)
+    
+    if network.is_authenticated():
+        # Start local player only if authenticated
+        player = LocalPlayer()
+        prefs = Container.resolve(UserPreferences)
+        player.start(audio_config=prefs.audio_config)
+        Container.register(LocalPlayer, lambda: player, singleton=True)
+        return True
+    return False
+
+class WizardApp(App):
+    """Temporary app for setup and login flows."""
+    CSS_PATH = "styles/main.tcss"
+    def __init__(self, start_screen):
+        super().__init__()
+        self.start_screen = start_screen
+        
+    def on_mount(self):
+        self.push_screen(self.start_screen)
+
+if __name__ == "__main__":
+    setup_config()
+    client_config = Container.resolve(ClientConfiguration)
+    
+    # 1. Check if Client ID/Secret are configured
+    if not client_config.is_valid():
+        wizard = WizardApp(SetupScreen())
+        result = wizard.run()
         if result == "setup_complete":
-            # Re-setup DI with new config
-            setup_di()
-            app = TerminalRenderer()
-            app.run()
-    else:
-        app = TerminalRenderer()
-        app.run()
+            client_config.load() # Refresh
+        else:
+            sys.exit(0)
+            
+    # 2. Check if Authenticated with Spotify
+    if not setup_spotify():
+        wizard = WizardApp(LoginScreen())
+        result = wizard.run()
+        if result == "login_complete":
+            setup_spotify() # Try again now that we have tokens
+        elif result == "back_to_setup":
+            # Just exit and restart the flow
+            sys.exit(0)
+        else:
+            sys.exit(0)
+            
+    # 3. All good, launch main TUI
+    app = TerminalRenderer()
+    app.run()

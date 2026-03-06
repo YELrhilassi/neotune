@@ -8,43 +8,76 @@ class SpotifyNetwork:
     def __init__(self, config: ClientConfiguration):
         self.config = config
         self.sp = None
-        self.authenticate()
+        self.setup_auth()
 
-    def authenticate(self):
+    def setup_auth(self):
         if not self.config.is_valid():
-            raise Exception("Invalid client configuration. Complete the setup form.")
+            return
             
-        try:
-            scope = "user-read-playback-state,user-modify-playback-state,playlist-read-private,user-read-currently-playing,user-library-read,user-read-recently-played"
-            if not SpotifyNetwork._auth_manager:
-                SpotifyNetwork._auth_manager = SpotifyOAuth(
-                    client_id=self.config.client_id,
-                    client_secret=self.config.client_secret,
-                    redirect_uri=self.config.redirect_uri,
-                    scope=scope,
-                    open_browser=False
-                )
-            self.sp = spotipy.Spotify(auth_manager=SpotifyNetwork._auth_manager)
-            self.sp.current_user() # Validate
-        except Exception as e:
-            self.sp = None
-            raise Exception(f"Authentication failed: {e}")
+        scope = "user-read-playback-state,user-modify-playback-state,playlist-read-private,user-read-currently-playing,user-library-read,user-read-recently-played"
+        if not SpotifyNetwork._auth_manager:
+            SpotifyNetwork._auth_manager = SpotifyOAuth(
+                client_id=self.config.client_id,
+                client_secret=self.config.client_secret,
+                redirect_uri=self.config.redirect_uri,
+                scope=scope,
+                open_browser=False
+            )
+        # Don't initialize self.sp here with auth_manager yet
+        # We will initialize it lazily in is_authenticated or complete_login
+        if self.sp is None:
+            token_info = SpotifyNetwork._auth_manager.get_cached_token()
+            if token_info:
+                self.sp = spotipy.Spotify(auth=token_info['access_token'])
+            else:
+                self.sp = spotipy.Spotify() # Unauthenticated instance
+
+    def get_auth_url(self):
+        if not SpotifyNetwork._auth_manager:
+            self.setup_auth()
+        return SpotifyNetwork._auth_manager.get_authorize_url()
+
+    def complete_login(self, response_url: str):
+        if not SpotifyNetwork._auth_manager:
+            self.setup_auth()
+        
+        # Extract code from URL and get token
+        code = SpotifyNetwork._auth_manager.parse_response_code(response_url)
+        token = SpotifyNetwork._auth_manager.get_access_token(code, as_dict=False)
+        if token:
+            self.sp = spotipy.Spotify(auth=token)
+            return True
+        return False
 
     def is_authenticated(self) -> bool:
-        if not self.sp: return False
-        try:
-            self.sp.current_user() # Lightweight call to check token validity
-            return True
-        except spotipy.oauth2.SpotifyOauthError: # Explicitly catch auth errors
-            self.sp = None # Invalidate current session
+        if not SpotifyNetwork._auth_manager:
             return False
-        except Exception: # Catch other potential network issues but assume not an auth error
-            return True
+        
+        token_info = SpotifyNetwork._auth_manager.get_cached_token()
+        if not token_info:
+            return False
+            
+        # If token is expired, SpotifyOAuth usually refreshes it automatically if possible.
+        # But we want to avoid any method that might trigger an interactive prompt.
+        if SpotifyNetwork._auth_manager.is_token_expired(token_info):
+            try:
+                # Attempt silent refresh
+                token_info = SpotifyNetwork._auth_manager.refresh_access_token(token_info['refresh_token'])
+            except Exception:
+                return False
+                
+        if not token_info:
+            return False
+            
+        if not self.sp:
+            self.sp = spotipy.Spotify(auth=token_info['access_token'])
+            
+        return True
 
     def reauthenticate(self):
         # Force a re-authentication by clearing the cached token
         SpotifyNetwork._auth_manager = None
-        self.authenticate()
+        self.setup_auth()
 
     def get_playlists(self, limit=50):
         if not self.sp: return []

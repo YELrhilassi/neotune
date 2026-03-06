@@ -29,37 +29,45 @@ class WhichKeyPopup(BaseModal):
         
         # 2. Navigation
         nav = self.prefs.nav_bindings
-        for name, key in nav.items():
-            all_keys.append(("Navigation", key, f"Nav {name.replace('_', ' ').title()}"))
+        # Sort navigation keys logically
+        nav_order = ["up", "down", "left", "right", "page_up", "page_down"]
+        for name in nav_order:
+            if name in nav:
+                key = nav[name]
+                all_keys.append(("Navigation", key, f"Nav {name.replace('_', ' ').title()}"))
             
         # 3. Leader Actions
         kb = self.prefs.keybindings or {}
-        for key, val in kb.items():
+        # Sort leader actions by description for better organization
+        sorted_kb = sorted(kb.items(), key=lambda x: x[1]['desc'])
+        for key, val in sorted_kb:
             all_keys.append(("Leader Actions", key, val['desc']))
 
         # 4. Telescope (if active)
         if any(type(s).__name__ == "TelescopePrompt" for s in self.app.screen_stack):
-            all_keys.append(("Telescope", "H", "Prev Category"))
-            all_keys.append(("Telescope", "L", "Next Category"))
-            all_keys.append(("Telescope", "h", "Panel Left / Search"))
-            all_keys.append(("Telescope", "l", "Panel Right / Preview"))
+            all_keys.append(("Telescope", "H/L", "Tabs Switch"))
+            all_keys.append(("Telescope", "i/a", "Insert Mode"))
+            all_keys.append(("Telescope", "h/l", "Switch Panels"))
             all_keys.append(("Telescope", "j/k", "Navigate List"))
-            all_keys.append(("Telescope", "U/D", "Page Up/Down"))
+            all_keys.append(("Telescope", "esc", "Normal Mode"))
             
-        # Group by category
-        categories = {}
+        # Group by category in a specific order
+        category_order = ["Global", "Navigation", "Leader Actions", "Telescope"]
+        
+        categories = {cat: [] for cat in category_order}
         for cat, key, desc in all_keys:
-            if cat not in categories:
-                categories[cat] = []
-            categories[cat].append((key, desc))
+            if cat in categories:
+                categories[cat].append((key, desc))
             
-        # We can just put 12 items max per page, arranged nicely.
-        ITEMS_PER_PAGE = 12
+        # Let's chunk categories or items into pages.
+        ITEMS_PER_PAGE = 14
         pages = []
         current_page_items = []
         
-        # Flatten by category
-        for cat, items in categories.items():
+        for cat in category_order:
+            items = categories[cat]
+            if not items: continue
+            
             for key, desc in items:
                 current_page_items.append((cat, key, desc))
                 if len(current_page_items) >= ITEMS_PER_PAGE:
@@ -81,8 +89,8 @@ class WhichKeyPopup(BaseModal):
     def _get_page_indicator(self) -> str:
         total = len(self.pages)
         if total <= 1:
-            return "[dim]esc to close[/dim]"
-        return f"[dim]Page {self.current_page + 1}/{total} • ◀/▶ to paginate • esc to close[/dim]"
+            return "[dim]esc to close[/]"
+        return f"[dim]Page {self.current_page + 1}/{total} • ◀/▶ to paginate • esc to close[/]"
 
     def watch_current_page(self, new_page: int):
         self.update_content()
@@ -108,7 +116,7 @@ class WhichKeyPopup(BaseModal):
             text += f"[bold #f38ba8]{cat}[/]\n"
             for k, d in cat_items:
                 # Format key and description
-                text += f"  [bold #a6e3a1]{str(k):<8}[/] [dim]→[/] [#cdd6f4]{d}[/]\n"
+                text += f"  [bold #a6e3a1]{str(k):<10}[/] [dim]→[/] [#cdd6f4]{d}[/]\n"
             text += "\n"
             
         content_label.update(text.strip())

@@ -38,7 +38,7 @@ class CommandPrompt(BaseModal[str]):
         for m in matched:
             cmd = commands[m]
             self.matched_commands.append({"action": cmd["action"], "alias": m, "desc": cmd["desc"]})
-            self.results.add_option(f"{m} - [dim]{cmd['desc']}[/dim]")
+            self.results.add_option(f"{m} - [dim]{cmd['desc']}[/]")
 
     def on_key(self, event: events.Key):
         if event.key == "escape":

@@ -81,6 +81,13 @@ class CommandService:
             app_instance.refresh_data()
             app_instance.update_now_playing()
             app_instance.notify("Refreshed")
+        elif action == "logout":
+            from src.ui.modals.confirmation import ConfirmationModal
+            def on_confirm(confirmed: bool):
+                if confirmed:
+                    from src.hooks.useLogout import useLogout
+                    useLogout(app_instance)
+            app_instance.push_screen(ConfirmationModal("Are you sure you want to logout and clear all sessions?"), on_confirm)
         elif action == "quit":
             app_instance.exit()
         else:

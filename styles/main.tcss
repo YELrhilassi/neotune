@@ -177,9 +177,31 @@ DataTable > .datatable--cursor {
 }
 
 /* Modals */
-DeviceSelector, AudioConfigSelector, CommandPopup, SearchPopup, TrackMenuPopup {
+DeviceSelector, AudioConfigSelector, CommandPopup, SearchPopup, TrackMenuPopup, CommandPrompt, TelescopePrompt, ConfirmationModal {
     align: center middle;
     background: rgba(17, 17, 27, 0.85); /* Dark transparent */
+}
+
+#confirmation-dialog {
+    width: 40;
+    height: auto;
+    border: none;
+    background: #181825;
+    padding: 1 2;
+}
+
+#confirmation-message {
+    text-align: center;
+    margin-bottom: 1;
+}
+
+#confirmation-buttons {
+    align: center middle;
+    height: 3;
+}
+
+#confirmation-buttons Button {
+    margin: 0 1;
 }
 
 WhichKeyPopup {
@@ -407,16 +429,16 @@ Toast.-error {
     border: round #f38ba8;
 }
 
-/* Setup Screen */
-#setup-card {
-    width: 80;
+/* Minimal Setup Screen Redesign */
+#setup-mini-card {
+    width: 60;
     height: auto;
-    border: double #cba6f7;
-    background: #181825;
-    padding: 1 2;
+    background: transparent;
+    border: none;
+    padding: 0;
 }
 
-#setup-title {
+#setup-title-minimal {
     text-align: center;
     width: 100%;
     color: #cba6f7;
@@ -424,56 +446,50 @@ Toast.-error {
     margin-bottom: 1;
 }
 
-#setup-split {
-    height: auto;
-    border-top: solid #313244;
-    border-bottom: solid #313244;
+#setup-simple-help {
+    color: #6c7086;
+    margin-bottom: 2;
+    text-align: center;
 }
 
-#setup-info {
-    width: 30;
-    height: auto;
-    padding-right: 2;
-    border-right: solid #313244;
-}
-
-#setup-inputs {
-    width: 1fr;
-    height: auto;
-    padding-left: 2;
-}
-
-.section-title {
-    color: #bac2de;
-    text-style: bold italic;
-    margin-bottom: 1;
+.minimal-section-title {
+    color: #89b4fa;
+    text-style: bold;
     margin-top: 1;
-}
-
-#setup-help {
-    color: #a6adc8;
-}
-
-.input-group {
-    height: auto;
     margin-bottom: 1;
+    text-align: center;
 }
 
-.input-group Input {
+.minimal-input {
     margin-bottom: 1;
-    border: round #313244;
+    height: 1;
+    border: none;
+    background: #11111b;
+    color: #cdd6f4;
+    padding: 0 1;
 }
 
-.input-group Input:focus {
-    border: round #89b4fa;
+.minimal-input:focus {
+    background: #313244;
 }
 
-#setup-footer {
-    margin-top: 1;
+#setup-mini-actions, #login-mini-actions {
+    margin-top: 2;
     height: 3;
     align: center middle;
 }
 
-#setup-footer Button {
+.small-btn {
+    min-width: 15;
+    height: 1;
     margin: 0 1;
+    border: none;
+    background: #313244;
+    color: #cdd6f4;
+}
+
+.small-btn:focus {
+    background: #89b4fa;
+    color: #11111b;
+    text-style: bold;
 }
