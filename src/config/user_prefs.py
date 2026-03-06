@@ -14,6 +14,7 @@ class UserPreferences:
         self.theme = "default"
         self.leader = "space"
         self.show_which_key = True
+        self.auto_play = False
         
         # We will store dynamic mappings like: {"p": {"action": "play_pause", "desc": "Play/Pause"}}
         self.keybindings = {
@@ -61,6 +62,10 @@ class UserPreferences:
         
         function spotify_tui.set_which_key(show)
             spotify_tui.show_which_key = show
+        end
+        
+        function spotify_tui.set_auto_play(enabled)
+            spotify_tui.auto_play = enabled
         end
         
         function spotify_tui.map(key, action, desc)
@@ -114,6 +119,9 @@ class UserPreferences:
                     
                 if getattr(tui_api, "show_which_key", None) is not None:
                     self.show_which_key = bool(tui_api.show_which_key)
+                
+                if getattr(tui_api, "auto_play", None) is not None:
+                    self.auto_play = bool(tui_api.auto_play)
                 
                 # Extract keybindings
                 lua_kb = tui_api.keymaps

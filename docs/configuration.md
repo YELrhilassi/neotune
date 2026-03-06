@@ -21,11 +21,24 @@ Your `init.lua` is where you tie everything together. You can use the standard `
 
 ```lua
 -- lua/init.lua
+
+-- Enable auto-play on startup (optional)
+spotify_tui.set_auto_play(true)
+
 require("theme")
 require("keymaps")
 require("audio")
 require("commands")
 ```
+
+## Global Settings
+
+| Function | Description |
+| --- | --- |
+| `spotify_tui.set_leader(key)` | Sets the leader key (default: `space`) |
+| `spotify_tui.set_which_key(boolean)` | Toggles the WhichKey discovery popup |
+| `spotify_tui.set_auto_play(boolean)` | Automatically start playback on application launch |
+| `spotify_tui.set_theme(name)` | Sets the UI theme |
 
 ## Keybindings (`keymaps.lua`)
 

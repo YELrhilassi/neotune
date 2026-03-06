@@ -15,6 +15,7 @@ from src.hooks.useEnsureActiveDevice import useEnsureActiveDevice
 from src.hooks.useSwitchToLocalPlayer import useSwitchToLocalPlayer
 from src.hooks.useRefreshData import useRefreshData
 from src.hooks.useUpdateNowPlaying import useUpdateNowPlaying
+from src.hooks.useAutoPlay import useAutoPlay
 
 from src.ui.components.now_playing import NowPlaying
 from src.ui.components.sidebar import SidebarPanels
@@ -56,6 +57,7 @@ class TerminalRenderer(App):
             self.store.set("current_tracks", recent)
         
         self.set_timer(1.0, lambda: useSwitchToLocalPlayer(self))
+        self.set_timer(2.0, lambda: useAutoPlay(self))
         
         self.update_now_playing()
         self.set_interval(5.0, self.update_now_playing)
