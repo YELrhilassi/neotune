@@ -123,13 +123,22 @@ class SpotifyNetwork:
 
     def play_track(self, track_uri, device_id=None):
         if not self.sp: return
+        
+        # Decide if we use 'uris' (for tracks) or 'context_uri' (for albums/playlists)
+        params = {"device_id": device_id}
+        if "track" in track_uri:
+            params["uris"] = [track_uri]
+        else:
+            params["context_uri"] = track_uri
+
         try:
-            self.sp.start_playback(device_id=device_id, uris=[track_uri])
+            self.sp.start_playback(**params)
         except spotipy.exceptions.SpotifyException as e:
             if e.http_status == 404 and 'No active device' in str(e):
                 dev_id = self._get_fallback_device_id()
                 if dev_id:
-                    self.sp.start_playback(device_id=dev_id, uris=[track_uri])
+                    params["device_id"] = dev_id
+                    self.sp.start_playback(**params)
                     return
             raise e
 

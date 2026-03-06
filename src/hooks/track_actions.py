@@ -45,7 +45,7 @@ def play_track(track_uri: str, app):
         
     try:
         network.play_track(track_uri, device_id=target_device_id)
-        app.notify("Playing track...")
+        app.notify("Playback started...")
         return True
     except Exception as e:
         app.notify(f"Playback error: {e}", severity="error")
