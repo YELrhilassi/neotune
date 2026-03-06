@@ -177,7 +177,7 @@ DataTable > .datatable--cursor {
 }
 
 /* Modals */
-DeviceSelector, AudioConfigSelector, CommandPopup, SearchPopup, TrackMenuPopup, CommandPrompt, TelescopePrompt, ConfirmationModal {
+DeviceSelector, AudioConfigSelector, CommandPopup, SearchPopup, TrackMenuPopup, CommandPrompt, TelescopePrompt, ConfirmationModal, LogModal {
     align: center middle;
     background: rgba(17, 17, 27, 0.85); /* Dark transparent */
 }
@@ -507,4 +507,12 @@ SetupScreen, LoginScreen {
     background: #89b4fa;
     color: #11111b;
     text-style: bold;
+}
+
+#app-logs {
+    width: 80%;
+    height: 80%;
+    background: #1e1e2e;
+    border: round #89b4fa;
+    padding: 1;
 }

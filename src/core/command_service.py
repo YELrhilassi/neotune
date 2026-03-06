@@ -88,6 +88,14 @@ class CommandService:
                     from src.hooks.useLogout import useLogout
                     useLogout(app_instance)
             app_instance.push_screen(ConfirmationModal("Are you sure you want to logout and clear all sessions?"), on_confirm)
+        elif action == "health":
+            from src.hooks.useHealthCheck import useHealthCheck
+            useHealthCheck(app_instance)
+        elif action == "restart_daemon":
+            from src.network.local_player import LocalPlayer
+            player = Container.resolve(LocalPlayer)
+            player.restart()
+            app_instance.notify("Restarted playback daemon.")
         elif action == "quit":
             app_instance.exit()
         else:

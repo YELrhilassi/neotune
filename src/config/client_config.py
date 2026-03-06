@@ -15,6 +15,9 @@ class ClientConfiguration:
         self.client_secret = None
         self.redirect_uri = "http://127.0.0.1:8080"
         
+        self.username = None
+        self.password = None
+        
         self.load()
 
     def load(self):
@@ -25,13 +28,17 @@ class ClientConfiguration:
                     self.client_id = data.get("client_id")
                     self.client_secret = data.get("client_secret")
                     self.redirect_uri = data.get("redirect_uri", self.redirect_uri)
+                    self.username = data.get("username")
+                    self.password = data.get("password")
                     
     def save(self):
         self.config_dir.mkdir(parents=True, exist_ok=True)
         data = {
             "client_id": self.client_id,
             "client_secret": self.client_secret,
-            "redirect_uri": self.redirect_uri
+            "redirect_uri": self.redirect_uri,
+            "username": self.username,
+            "password": self.password
         }
         with open(self.config_path, "w") as f:
             yaml.dump(data, f)

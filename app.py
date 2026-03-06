@@ -9,6 +9,7 @@ from src.core.command_service import CommandService
 from src.ui.terminal_renderer import TerminalRenderer
 from src.ui.screens.setup import SetupScreen
 from src.ui.screens.login import LoginScreen
+from src.ui.screens.player_auth import PlayerAuthScreen
 from textual.app import App
 
 def setup_config():
@@ -28,10 +29,8 @@ def setup_spotify():
     Container.register(SpotifyNetwork, lambda: network, singleton=True)
     
     if network.is_authenticated():
-        # Start local player only if authenticated
+        # Register Local Player but don't start yet, check auth first
         player = LocalPlayer()
-        prefs = Container.resolve(UserPreferences)
-        player.start(audio_config=prefs.audio_config)
         Container.register(LocalPlayer, lambda: player, singleton=True)
         return True
     return False
@@ -55,22 +54,34 @@ if __name__ == "__main__":
         wizard = WizardApp(SetupScreen())
         result = wizard.run()
         if result == "setup_complete":
-            client_config.load() # Refresh
+            client_config.load()
         else:
             sys.exit(0)
             
-    # 2. Check if Authenticated with Spotify
+    # 2. Check if Web API Authenticated
     if not setup_spotify():
         wizard = WizardApp(LoginScreen())
         result = wizard.run()
         if result == "login_complete":
-            setup_spotify() # Try again now that we have tokens
-        elif result == "back_to_setup":
-            # Just exit and restart the flow
-            sys.exit(0)
+            setup_spotify()
         else:
             sys.exit(0)
             
-    # 3. All good, launch main TUI
+    # 3. Check if Local Player (spotifyd) Authenticated
+    player = Container.resolve(LocalPlayer)
+    if player and not player.is_authenticated():
+        wizard = WizardApp(PlayerAuthScreen())
+        result = wizard.run()
+        if result != "player_auth_complete":
+            # Optional: Allow continuing without local player if user cancels?
+            # For now, we enforce it for high-quality playback.
+            pass
+
+    # 4. Start Local Player if authenticated
+    if player and player.is_authenticated():
+        prefs = Container.resolve(UserPreferences)
+        player.start(audio_config=prefs.audio_config)
+
+    # 5. Launch main TUI
     app = TerminalRenderer()
     app.run()

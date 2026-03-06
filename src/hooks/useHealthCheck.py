@@ -54,6 +54,19 @@ def useHealthCheck(app):
     else:
         report.append("  System Processes: None found")
 
+    # 4. Daemon Logs
+    log_path = os.path.join(player.cache_dir, "daemon.log")
+    if os.path.exists(log_path):
+        report.append("\n[bold #89b4fa][Daemon Logs][/]")
+        try:
+            with open(log_path, "r") as f:
+                lines = f.readlines()
+                # Get last 5 lines
+                for line in lines[-5:]:
+                    report.append(f"  {line.strip()}")
+        except Exception:
+            report.append("  Failed to read logs.")
+
     # Display report in a modal or notification
     # For now, we'll print it to logs and show a summary notification
     full_report = "\n".join(report)

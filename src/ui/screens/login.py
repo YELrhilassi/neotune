@@ -2,7 +2,7 @@ import webbrowser
 from textual.app import ComposeResult
 from textual.screen import Screen
 from textual.widgets import Input, Label, Button, Static, TextArea
-from textual.containers import Vertical, Horizontal
+from textual.containers import Vertical, Horizontal, Center
 from src.core.di import Container
 from src.network.spotify_network import SpotifyNetwork
 from src.hooks.useCopyToClipboard import useCopyToClipboard
@@ -13,12 +13,10 @@ class LoginScreen(Screen):
         self.auth_url = network.get_auth_url()
         
         with Vertical(id="setup-mini-card"):
-            yield Label("󰓇 SPOTIFY AUTHORIZATION", id="setup-title-minimal")
+            yield Label("󰓇 AUTHORIZATION", id="setup-title-minimal")
 
             yield Static(
-                "1. Click 'Open Link' to authorize in your browser.\n"
-                "2. If it fails, click 'Copy Link' and paste it manually.\n"
-                "3. Paste the redirected URL below to finish.",
+                "Copy the link below or try to open it in your browser.",
                 id="setup-simple-help"
             )
             
@@ -26,8 +24,12 @@ class LoginScreen(Screen):
                 yield Button("Open Link", variant="primary", id="open-browser-btn", classes="small-btn")
                 yield Button("Copy Link", variant="default", id="copy-link-btn", classes="small-btn")
             
+            yield Label("Manual Authorization Link", classes="minimal-section-title")
+            # Use TextArea to prevent truncation of long Spotify URLs
+            yield TextArea(self.auth_url, id="manual-link", classes="minimal-text-area", read_only=True)
+
             yield Label("Redirect URL", classes="minimal-section-title")
-            yield Input(placeholder="Paste URL here...", id="redirect_url_input", classes="minimal-input")
+            yield Input(placeholder="Paste the URL from your browser here...", id="redirect_url_input", classes="minimal-input")
 
             with Horizontal(id="setup-mini-actions"):
                 yield Button("Login", variant="success", id="login-btn", classes="small-btn")
@@ -36,17 +38,16 @@ class LoginScreen(Screen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "open-browser-btn":
             try:
-                # Attempt to open browser
                 if not webbrowser.open(self.auth_url):
-                     self.app.notify("Could not open browser automatically.", severity="warning")
+                     self.app.notify("System could not open browser.", severity="warning")
             except Exception as e:
-                self.app.notify(f"Browser error: {e}. Use 'Copy Link'.", severity="warning")
+                self.app.notify("Display error: Use 'Copy Link' instead.", severity="warning")
                 
         elif event.button.id == "copy-link-btn":
             if useCopyToClipboard(self.auth_url):
-                self.app.notify("Authorization URL copied to clipboard!")
+                self.app.notify("URL copied to clipboard!")
             else:
-                self.app.notify("Failed to copy automatically. Please select text manually.", severity="error")
+                self.app.notify("Auto-copy failed. Copy the text manually.", severity="error")
                 
         elif event.button.id == "login-btn":
             url = self.query_one("#redirect_url_input").value.strip()

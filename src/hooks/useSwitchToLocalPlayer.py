@@ -1,36 +1,51 @@
+import asyncio
 from src.core.di import Container
 from src.network.spotify_network import SpotifyNetwork
 from src.state.store import Store
 
-def useSwitchToLocalPlayer(app, force=False):
+async def useSwitchToLocalPlayer(app, force=False):
     """
-    Switches playback to the local "Spotify TUI Player" or the first available device.
+    Switches playback to the local "Spotify TUI Player".
+    Includes a retry loop to wait for the daemon to register with Spotify.
     """
-    try:
-        network = Container.resolve(SpotifyNetwork)
-        store = Container.resolve(Store)
-        devices_data = network.get_devices()
-        
-        if not devices_data or not devices_data.get('devices'):
-            return
-        
-        is_active = any(d.get('is_active') for d in devices_data['devices'])
-        if not force and is_active:
-            return
+    network = Container.resolve(SpotifyNetwork)
+    store = Container.resolve(Store)
+    
+    # Try up to 3 times to find and switch to the device
+    for attempt in range(3):
+        try:
+            devices_data = network.get_devices()
+            if not devices_data or not devices_data.get('devices'):
+                await asyncio.sleep(1.5) # Wait for daemon to register
+                continue
             
-        for device in devices_data['devices']:
-            if device['name'] == "Spotify TUI Player":
-                store.set("preferred_device_id", device['id'])
-                store.set("preferred_device_name", device['name'])
-                network.transfer_playback(device['id'], force_play=False)
-                app.notify(f"Auto-switched to local output: {device['name']}")
-                return
+            devices = devices_data['devices']
+            
+            # If not forcing, only switch if there is NO active device at all
+            is_any_active = any(d.get('is_active') for d in devices)
+            if not force and is_any_active:
+                return True
+                
+            target_device = None
+            # Look for our specific TUI player
+            for device in devices:
+                if device['name'] == "Spotify TUI Player":
+                    target_device = device
+                    break
+            
+            # Fallback to first available if forced
+            if not target_device and force and devices:
+                target_device = devices[0]
 
-        if force and devices_data['devices']:
-            first_device = devices_data['devices'][0]
-            store.set("preferred_device_id", first_device['id'])
-            store.set("preferred_device_name", first_device['name'])
-            network.transfer_playback(first_device['id'], force_play=False)
-            app.notify(f"Activated first available device: {first_device['name']}")
-    except Exception:
-        pass
+            if target_device:
+                store.set("preferred_device_id", target_device['id'])
+                store.set("preferred_device_name", target_device['name'])
+                network.transfer_playback(target_device['id'], force_play=False)
+                return True
+                
+        except Exception:
+            pass
+            
+        await asyncio.sleep(1.5) # Wait before next attempt
+        
+    return False

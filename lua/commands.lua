@@ -11,5 +11,5 @@ spotify_tui.command("shuffle", "toggle_shuffle", "Toggle shuffle state")
 spotify_tui.command("repeat", "cycle_repeat", "Cycle repeat state")
 
 spotify_tui.command("logout", "logout", "Logout and clear all sessions")
-
+spotify_tui.command("health", "health", "Run system diagnostics")
 spotify_tui.command("theme", "theme_selector", "Open Theme Selector")
