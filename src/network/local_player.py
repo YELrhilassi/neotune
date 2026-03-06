@@ -83,37 +83,36 @@ class LocalPlayer:
         self.stop_existing()
 
         # Build command from user prefs or defaults
-        backend = "pulseaudio"
         bitrate = "320"
-        device = "default"
         
         if audio_config:
-            backend = audio_config.get("backend", backend)
             bitrate = audio_config.get("bitrate", bitrate)
-            device = audio_config.get("device", device)
 
         cmd = [
             self.binary_path,
             "--no-daemon",
             "--device-name", self.device_name,
             "--bitrate", bitrate,
-            "--backend", backend,
-            "-c", self.cache_dir
+            "-c", self.cache_dir,
+            "--initial-volume", "100"
         ]
         
-        # Only add device if it's not 'default' or if backend is not pulseaudio
-        if device != "default":
-            cmd.extend(["--device", device])
+        # Only explicitly append backend/device if user specifically configured them
+        if audio_config and audio_config.get("backend"):
+            cmd.extend(["--backend", audio_config.get("backend")])
+        if audio_config and audio_config.get("device") and audio_config.get("device") != "default":
+            cmd.extend(["--device", audio_config.get("device")])
         
         try:
             # We open it in the background but capture errors to a log file
             log_path = os.path.join(self.cache_dir, "daemon.log")
-            with open(log_path, "w") as log_file:
-                self.process = subprocess.Popen(
-                    cmd, 
-                    stdout=log_file, 
-                    stderr=log_file
-                )
+            self._log_file = open(log_path, "w")
+            self.process = subprocess.Popen(
+                cmd, 
+                stdin=subprocess.DEVNULL,
+                stdout=self._log_file, 
+                stderr=self._log_file
+            )
             
             # Register both normal exit and crash/termination exit
             atexit.register(self.stop)
@@ -139,5 +138,10 @@ class LocalPlayer:
                 except:
                     pass
             self.process = None
+        if hasattr(self, '_log_file') and self._log_file and not self._log_file.closed:
+            try:
+                self._log_file.close()
+            except Exception:
+                pass
         # Double check to kill any orphans in the same group
         self.stop_existing()

@@ -154,6 +154,7 @@ class TerminalRenderer(App):
             yield TrackList(id="track-list")
         yield StatusBar(id="status-bar")
 
+    @work(thread=True)
     def update_now_playing(self):
         useUpdateNowPlaying(self) 
 
