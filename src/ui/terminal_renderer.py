@@ -138,35 +138,38 @@ class TerminalRenderer(App):
         
         nav = self.user_prefs.nav_bindings
         
-        if char == nav["left"] and not self.leader_mode and not in_input:
+        # If a modal is active, we don't want to trigger global navigation.
+        is_modal_active = len(self.screen_stack) > 1
+
+        if char == nav["left"] and not self.leader_mode and not in_input and not is_modal_active:
             self.action_focus_previous()
             event.prevent_default()
             return
             
-        if char == nav["right"] and not self.leader_mode and not in_input:
+        if char == nav["right"] and not self.leader_mode and not in_input and not is_modal_active:
             self.action_focus_next()
             event.prevent_default()
             return
             
-        if char == nav["down"] and not self.leader_mode and not in_input:
+        if char == nav["down"] and not self.leader_mode and not in_input and not is_modal_active:
             if hasattr(self.focused, "action_cursor_down"):
                 self.focused.action_cursor_down()
             event.prevent_default()
             return
             
-        if char == nav["up"] and not self.leader_mode and not in_input:
+        if char == nav["up"] and not self.leader_mode and not in_input and not is_modal_active:
             if hasattr(self.focused, "action_cursor_up"):
                 self.focused.action_cursor_up()
             event.prevent_default()
             return
             
-        if char == nav.get("page_down") and not self.leader_mode and not in_input:
+        if char == nav.get("page_down") and not self.leader_mode and not in_input and not is_modal_active:
             if hasattr(self.focused, "action_page_down"):
                 self.focused.action_page_down()
             event.prevent_default()
             return
             
-        if char == nav.get("page_up") and not self.leader_mode and not in_input:
+        if char == nav.get("page_up") and not self.leader_mode and not in_input and not is_modal_active:
             if hasattr(self.focused, "action_page_up"):
                 self.focused.action_page_up()
             event.prevent_default()
