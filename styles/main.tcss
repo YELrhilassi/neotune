@@ -1,20 +1,125 @@
-/* Omarchy / Omakub Inspired Sleek Aesthetic */
-Screen {
-    layout: vertical;
-    background: #1e1e2e; /* Catppuccin Mocha Base */
-    color: #cdd6f4;      /* Text */
+/* ==========================================================================
+   DESIGN TOKENS (Catppuccin Mocha Defaults)
+   ========================================================================== */
+$bg: #1e1e2e;
+$surface: #181825;
+$overlay: #313244;
+$fg: #cdd6f4;
+$subtext: #a6adc8;
+$dim-text: #6c7086;
+
+$accent: #cba6f7; /* Mauve */
+$primary: #89b4fa; /* Blue */
+$success: #a6e3a1; /* Green */
+$warning: #fab387; /* Peach/Orange */
+$error: #f38ba8;   /* Red */
+
+$border-color: #313244;
+$border-hover: #cba6f7;
+$border-active: #89b4fa;
+
+/* ==========================================================================
+   THEME OVERRIDES
+   ========================================================================== */
+.theme-nord {
+    $bg: #2e3440;
+    $surface: #3b4252;
+    $overlay: #434c5e;
+    $fg: #eceff4;
+    $accent: #88c0d0;
+    $primary: #81a1c1;
+    $success: #a3be8c;
 }
 
-/* Hide Visual Scrollbars */
+.theme-dracula {
+    $bg: #282a36;
+    $surface: #44475a;
+    $overlay: #6272a4;
+    $fg: #f8f8f2;
+    $accent: #bd93f9;
+    $primary: #8be9fd;
+    $success: #50fa7b;
+}
+
+.theme-tokyo-night {
+    $bg: #1a1b26;
+    $surface: #16161e;
+    $overlay: #24283b;
+    $fg: #a9b1d6;
+    $accent: #bb9af7;
+    $primary: #7aa2f7;
+    $success: #9ece6a;
+}
+
+/* ==========================================================================
+   BASE STYLES
+   ========================================================================== */
+Screen {
+    layout: vertical;
+    background: $bg;
+    color: $fg;
+}
+
 * {
     scrollbar-size: 0 0;
 }
 
+Tree {
+    background: $bg;
+    color: $fg;
+    padding: 1;
+}
+
+Tree > .tree--cursor {
+    background: $overlay;
+    color: $primary;
+    text-style: bold;
+}
+
+DataTable {
+    background: $bg;
+}
+
+DataTable > .datatable--header {
+    background: $bg;
+    color: $subtext;
+    text-style: bold;
+    border-bottom: solid $border-color;
+}
+
+DataTable > .datatable--cursor {
+    background: $accent;
+    color: $surface;
+    text-style: bold;
+}
+
+OptionList {
+    background: transparent;
+    border: round $border-color;
+}
+
+OptionList:focus {
+    border: round $primary;
+}
+
+OptionList > .option-list--option {
+    padding: 0 1;
+}
+
+OptionList > .option-list--option-highlighted {
+    background: $overlay;
+    text-style: bold;
+    color: $success;
+}
+
+/* ==========================================================================
+   STATUS BAR (Neovim Style)
+   ========================================================================== */
 #status-bar {
     height: 1;
     dock: bottom;
-    background: #1e1e2e;
-    color: #cdd6f4;
+    background: $bg;
+    color: $fg;
     padding: 0;
 }
 
@@ -24,68 +129,55 @@ Screen {
 }
 
 #status-mode {
-    background: #89b4fa;
-    color: #1e1e2e;
+    color: $surface;
     text-style: bold;
+    padding: 0 1;
 }
 
-#status-mode.normal {
-    background: #89b4fa; /* Blue */
-}
-
-#status-mode.leader {
-    background: #fab387; /* Orange */
-}
-
-#status-mode.search {
-    background: #a6e3a1; /* Green */
-}
+#status-mode.normal { background: $primary; }
+#status-mode.leader { background: $warning; }
+#status-mode.search { background: $success; }
 
 #status-mode-sep {
-    color: #89b4fa;
-    background: #313244;
+    background: $overlay;
 }
 
-#status-mode-sep.normal {
-    color: #89b4fa;
-}
-
-#status-mode-sep.leader {
-    color: #fab387;
-}
-
-#status-mode-sep.search {
-    color: #a6e3a1;
-}
+#status-mode-sep.normal { color: $primary; }
+#status-mode-sep.leader { color: $warning; }
+#status-mode-sep.search { color: $success; }
 
 #status-left {
-    background: #313244;
-    color: #cdd6f4;
+    background: $overlay;
+    color: $fg;
     width: auto;
 }
 
 #status-middle {
-    background: #181825;
+    background: $surface;
     width: 1fr;
 }
 
 #status-right-sep {
-    background: #181825;
-    color: #89b4fa;
+    background: $surface;
+    color: $primary;
 }
 
 #status-right {
-    background: #89b4fa;
-    color: #1e1e2e;
+    background: $primary;
+    color: $surface;
     width: auto;
     text-style: bold;
+    padding: 0 1;
 }
 
+/* ==========================================================================
+   NOW PLAYING
+   ========================================================================== */
 #now-playing {
     height: auto;
     dock: top;
-    background: #1e1e2e;
-    border: round #cba6f7; /* Mauve Accent Border around the whole card */
+    background: $bg;
+    border: round $accent;
     margin: 1 2 0 2;
     padding: 1 2;
 }
@@ -117,84 +209,61 @@ Screen {
     margin-left: 1;
 }
 
+/* ==========================================================================
+   MAIN CONTENT
+   ========================================================================== */
 #main-container {
     height: 1fr;
     layout: horizontal;
 }
 
-/* Sidebar and TrackList Panels */
 #sidebar {
     width: 35;
     height: 1fr;
     dock: left;
-    border: round #313244;
+    border: round $border-color;
 }
 
 #sidebar:focus {
-    border: round #cba6f7;
+    border: round $accent;
 }
 
 #track-list {
     height: 1fr;
     width: 1fr;
-    background: #1e1e2e;
-    border: round #313244;
+    background: $bg;
+    border: round $border-color;
 }
 
 #track-list:focus {
-    border: round #89b4fa; /* Blue Accent */
+    border: round $primary;
 }
 
-/* Tree / List Styling */
-Tree {
-    background: #1e1e2e;
-    color: #cdd6f4;
-    padding: 1;
-}
-
-Tree > .tree--cursor {
-    background: #313244;
-    color: #89b4fa;
-    text-style: bold;
-}
-
-/* DataTable Styling */
-DataTable {
-    background: #1e1e2e;
-}
-
-DataTable > .datatable--header {
-    background: #1e1e2e;
-    color: #bac2de;
-    text-style: bold;
-    border-bottom: solid #313244;
-}
-
-DataTable > .datatable--cursor {
-    background: #cba6f7;
-    color: #11111b;
-    text-style: bold;
-}
-
-/* Modals */
+/* ==========================================================================
+   MODALS & DIALOGS
+   ========================================================================== */
 DeviceSelector, AudioConfigSelector, CommandPopup, SearchPopup, TrackMenuPopup, CommandPrompt, TelescopePrompt, ConfirmationModal, LogModal {
     align: center middle;
-    background: rgba(17, 17, 27, 0.85); /* Dark transparent */
+    background: rgba(17, 17, 27, 0.85);
+}
+
+#confirmation-dialog, #device-dialog, #audio-config-dialog, #command-dialog, #track-menu-dialog {
+    width: 60;
+    height: auto;
+    border: round $accent;
+    background: $surface;
+    padding: 1 2;
 }
 
 #confirmation-dialog {
-    width: 60;
-    height: auto;
-    border: round #f38ba8;
-    background: #181825;
-    padding: 1 2;
+    border: round $error;
 }
 
 #confirmation-message {
     text-align: center;
     width: 100%;
     margin-bottom: 2;
-    color: #cdd6f4;
+    color: $fg;
 }
 
 #confirmation-buttons {
@@ -210,53 +279,19 @@ WhichKeyPopup {
 #which-key-dialog {
     width: auto;
     height: auto;
-    border: round #cba6f7;
+    border: round $accent;
+    border-title-color: $primary;
+    border-subtitle-color: $text;
     background: rgba(24, 24, 37, 0.95);
     padding: 0 2;
     margin: 0 1;
 }
 
-#which-key-title {
-    content-align: center middle;
-}
-
 #which-key-content {
+    height: auto;
     width: auto;
-    height: auto;
 }
 
-#which-key-footer {
-    content-align: center middle;
-}
-
-#device-dialog, #audio-config-dialog, #command-dialog, #track-menu-dialog {
-    width: 60;
-    height: auto;
-    border: round #f5c2e7; /* Pink */
-    background: #181825;
-    padding: 1 2;
-}
-
-OptionList {
-    background: transparent;
-    border: round #313244;
-}
-
-OptionList:focus {
-    border: round #a6e3a1;
-}
-
-OptionList > .option-list--option {
-    padding: 0 1;
-}
-
-OptionList > .option-list--option-highlighted {
-    background: #313244;
-    text-style: bold;
-    color: #a6e3a1;
-}
-
-/* Command Prompt (Noice style) */
 CommandPrompt {
     align: center middle;
     padding-bottom: 2;
@@ -267,36 +302,33 @@ CommandPrompt {
     align: center middle;
     width: 60%;
     height: 50%;
-    background: #181825;
-    border: round #cba6f7;
+    background: $surface;
+    border: round $accent;
     padding: 1 2;
 }
 
 #command-input {
-    dock:top;
+    dock: top;
     background: transparent;
-    color: #cdd6f4;
-    border: round #cdd6f4 ;
+    color: $fg;
+    border: round $fg;
 }
 
-#command-results {
-    height: auto;
-    max-height: 10;
-    margin-top: 1;
-    background: transparent;
-    border: none;
+#app-logs {
+    width: 80%;
+    height: 80%;
+    background: $bg;
+    border: round $primary;
+    padding: 1;
 }
 
-/* Telescope Search styling overrides */
-TelescopePrompt {
-    align: center middle;
-    background: rgba(17, 17, 27, 0.85); /* Dark transparent */
-}
-
+/* ==========================================================================
+   TELESCOPE SEARCH
+   ========================================================================== */
 #telescope-wrapper {
     width: 80%;
     height: 80%;
-    background: #181825; /* Darker sectional background */
+    background: $surface;
     border: none;
     layout: vertical;
 }
@@ -304,50 +336,38 @@ TelescopePrompt {
 #telescope-header {
     height: 3;
     dock: top;
-    border: round #313244;
+    border: round $border-color;
     background: transparent;
-    margin-bottom: 0;
+    margin-bottom: 1;
 }
+
 #telescope-header:focus-within {
-    border: round #89b4fa; /* Blue active border */
+    border: round $primary;
 }
 
 #telescope-header.insert-mode {
-    border: round #a6e3a1; /* Green border for insert mode */
+    border: round $success;
 }
 
 #telescope-tabs {
-    height: 3;
+    height: 1fr;
     background: transparent;
-    padding: 0 1;
+    padding: 0;
     margin: 0;
-    align: center middle;
-}
-
-.tab {
-    padding: 0 2;
-    margin: 0 1;
-    background: #313244;
-    color: #a6adc8;
-    border: none;
-}
-
-.tab.active {
-    background: #89b4fa;
-    color: #1e1e2e;
-    text-style: bold;
 }
 
 #telescope-icon {
-    padding: 1;
-    color: #a6e3a1;
+    padding: 1 1 0 1;
+    color: $success;
+    width: auto;
+    height: auto;
 }
 
 #telescope-input {
     width: 1fr;
     border: none;
     background: transparent;
-    color: #cdd6f4;
+    color: $fg;
 }
 
 #telescope-hints {
@@ -356,83 +376,77 @@ TelescopePrompt {
     content-align: right middle;
 }
 
-#telescope-body {
+#telescope-body, .telescope-body {
     height: 1fr;
     layout: horizontal;
+    margin-top: 0;
 }
 
-#telescope-results {
+#telescope-results, .telescope-results {
     width: 50%;
     height: 1fr;
-    border: round #313244;
+    border: round $panel;
     background: transparent;
     margin-right: 1;
 }
 
-#telescope-results:focus {
-    border: round #a6e3a1; /* Green highlight */
+#telescope-results:focus-within, .telescope-results:focus-within {
+    border: round $success;
 }
 
-#telescope-preview {
+#telescope-preview, .telescope-preview {
     width: 50%;
     height: 1fr;
-    border: round #313244;
+    border: round $panel;
     background: transparent;
     padding: 1;
     layout: vertical;
 }
 
-#telescope-preview:focus-within {
-    border: round #cba6f7; /* Mauve highlight */
+#telescope-preview:focus-within, .telescope-preview:focus-within {
+    border: round $accent;
 }
 
-#telescope-preview-info {
+.telescope-empty-state {
+    width: 100%;
+    height: 100%;
+    content-align: center middle;
+    color: $text;
+}
+
+.telescope-results-list {
+    height: 1fr;
+    width: 1fr;
+    background: transparent;
+    border: none;
+}
+
+.telescope-results-list:focus {
+    border: none;
+}
+
+#telescope-preview-info, .telescope-preview-info {
     height: auto;
     margin-bottom: 1;
 }
 
-#telescope-preview-tracks {
+#telescope-preview-tracks, .telescope-preview-tracks {
     border: none;
     background: transparent;
     height: 1fr;
 }
-#telescope-preview-tracks:focus {
-    background: #181825;
+
+#telescope-preview-tracks:focus, .telescope-preview-tracks:focus {
+    background: $surface;
 }
 
-/* Built-in Textual Notifications Overrides */
-ToastRack {
-    align: center top;
-}
-
-Toast {
-    width: auto;
-    min-width: 30;
-    max-width: 60;
-    margin-top: 1;
-    border: round #cba6f7;
-    background: #1e1e2e;
-    color: #cdd6f4;
-}
-
-Toast.-information {
-    border: round #89b4fa;
-}
-
-Toast.-warning {
-    border: round #fab387;
-}
-
-Toast.-error {
-    border: round #f38ba8;
-}
-
-/* Onboarding Screens Centering */
-SetupScreen, LoginScreen {
+/* ==========================================================================
+   ONBOARDING (Setup / Login)
+   ========================================================================== */
+SetupScreen, LoginScreen, PlayerAuthScreen {
     align: center middle;
 }
 
-/* Minimal Setup Screen Redesign */
 #setup-mini-card {
     width: 60;
     height: auto;
@@ -444,19 +458,20 @@ SetupScreen, LoginScreen {
 #setup-title-minimal {
     text-align: center;
     width: 100%;
-    color: #cba6f7;
+    color: $accent;
     text-style: bold;
     margin-bottom: 1;
 }
 
 #setup-simple-help {
-    color: #6c7086;
+    color: $dim-text;
     margin-bottom: 2;
     text-align: center;
+    padding: 0 4;
 }
 
 .minimal-section-title {
-    color: #89b4fa;
+    color: $primary;
     text-style: bold;
     margin-top: 1;
     margin-bottom: 1;
@@ -467,25 +482,25 @@ SetupScreen, LoginScreen {
     margin-bottom: 1;
     height: 1;
     border: none;
-    background: #11111b;
-    color: #cdd6f4;
+    background: $surface;
+    color: $fg;
     padding: 0 1;
 }
 
 .minimal-input:focus {
-    background: #313244;
+    background: $overlay;
 }
 
 .minimal-text-area {
     margin-bottom: 1;
     height: 4;
     border: none;
-    background: #11111b;
-    color: #cdd6f4;
+    background: $surface;
+    color: $fg;
 }
 
 .minimal-text-area:focus {
-    background: #1e1e2e;
+    background: $bg;
 }
 
 #setup-mini-actions, #login-mini-actions {
@@ -499,20 +514,38 @@ SetupScreen, LoginScreen {
     height: 1;
     margin: 0 1;
     border: none;
-    background: #313244;
-    color: #cdd6f4;
+    background: $overlay;
+    color: $fg;
 }
 
 .small-btn:focus {
-    background: #89b4fa;
-    color: #11111b;
+    background: $primary;
+    color: $surface;
     text-style: bold;
 }
 
-#app-logs {
-    width: 80%;
-    height: 80%;
-    background: #1e1e2e;
-    border: round #89b4fa;
-    padding: 1;
+/* ==========================================================================
+   NOTIFICATIONS (Toasts)
+   ========================================================================== */
+ToastRack {
+    align: center top;
+}
+
+Toast {
+    width: auto;
+    min-width: 30;
+    max-width: 60;
+    margin-top: 1;
+    border: round $accent;
+    background: $bg;
+    color: $fg;
+}
+
+Toast.-information { border: round $primary; }
+Toast.-warning { border: round $warning; }
+Toast.-error { border: round $error; }
+
+LoadingIndicator {
+    color: $primary;
+    background: transparent;
 }

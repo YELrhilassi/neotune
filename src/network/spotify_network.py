@@ -28,7 +28,7 @@ class SpotifyNetwork:
         if self.sp is None:
             token_info = SpotifyNetwork._auth_manager.get_cached_token()
             if token_info:
-                self.sp = spotipy.Spotify(auth=token_info['access_token'])
+                self.sp = spotipy.Spotify(auth_manager=SpotifyNetwork._auth_manager)
             else:
                 self.sp = spotipy.Spotify() # Unauthenticated instance
 
@@ -45,7 +45,7 @@ class SpotifyNetwork:
         code = SpotifyNetwork._auth_manager.parse_response_code(response_url)
         token = SpotifyNetwork._auth_manager.get_access_token(code, as_dict=False)
         if token:
-            self.sp = spotipy.Spotify(auth=token)
+            self.sp = spotipy.Spotify(auth_manager=SpotifyNetwork._auth_manager)
             return True
         return False
 
@@ -69,8 +69,8 @@ class SpotifyNetwork:
         if not token_info:
             return False
             
-        if not self.sp:
-            self.sp = spotipy.Spotify(auth=token_info['access_token'])
+        if not self.sp or not getattr(self.sp, 'auth_manager', None):
+            self.sp = spotipy.Spotify(auth_manager=SpotifyNetwork._auth_manager)
             
         return True
 

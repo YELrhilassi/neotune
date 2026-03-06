@@ -1,0 +1,99 @@
+/* Global Modal Backgrounds */
+DeviceSelector, AudioConfigSelector, CommandPopup, SearchPopup, TrackMenuPopup, CommandPrompt, TelescopePrompt, ConfirmationModal, LogModal {
+    align: center middle;
+    background: rgba(17, 17, 27, 0.85);
+}
+
+/* Shared Modal Card style */
+#confirmation-dialog, #device-dialog, #audio-config-dialog, #command-dialog, #track-menu-dialog {
+    width: 60;
+    height: auto;
+    border: round $accent;
+    background: $surface;
+    padding: 1 2;
+}
+
+#confirmation-dialog {
+    border: round $error;
+}
+
+#confirmation-message {
+    text-align: center;
+    width: 100%;
+    margin-bottom: 2;
+    color: $text;
+}
+
+#confirmation-buttons {
+    align: center middle;
+    height: 3;
+}
+
+WhichKeyPopup {
+    align: right bottom;
+    background: transparent;
+}
+
+#which-key-dialog {
+    width: auto;
+    height: auto;
+    border: round $accent;
+    border-title-color: $primary;
+    border-subtitle-color: $text;
+    background: rgba(24, 24, 37, 0.95);
+    padding: 0 2;
+    margin: 0 1;
+}
+
+#which-key-content {
+    height: auto;
+    width: auto;
+}
+
+CommandPrompt {
+    align: center middle;
+    padding-bottom: 2;
+    background: transparent;
+}
+
+#command-prompt-container {
+    align: center middle;
+    width: 60%;
+    height: 50%;
+    background: $surface;
+    border: round $accent;
+    padding: 1 2;
+}
+
+#command-input {
+    dock: top;
+    background: transparent;
+    color: $text;
+    border: round $primary;
+}
+
+#app-logs {
+    width: 80%;
+    height: 80%;
+    background: $background;
+    border: round $primary;
+    padding: 1;
+}
+
+ToastRack {
+    align: center top;
+}
+
+Toast {
+    width: auto;
+    min-width: 30;
+    max-width: 60;
+    margin-top: 1;
+    border: round $accent;
+    background: $background;
+    color: $text;
+}
+
+Toast.-information { border: round $primary; }
+Toast.-warning { border: round $warning; }
+Toast.-error { border: round $error; }

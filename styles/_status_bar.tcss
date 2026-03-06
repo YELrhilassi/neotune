@@ -1,0 +1,54 @@
+#status-bar {
+    height: 1;
+    dock: bottom;
+    background: $background;
+    color: $text;
+    padding: 0;
+}
+
+#status-container {
+    layout: horizontal;
+    width: 100%;
+}
+
+#status-mode {
+    color: $surface;
+    text-style: bold;
+    padding: 0 1;
+}
+
+#status-mode.normal { background: $primary; }
+#status-mode.leader { background: $warning; }
+#status-mode.search { background: $success; }
+
+#status-mode-sep {
+    background: $panel;
+}
+
+#status-mode-sep.normal { color: $primary; }
+#status-mode-sep.leader { color: $warning; }
+#status-mode-sep.search { color: $success; }
+
+#status-left {
+    background: $panel;
+    color: $text;
+    width: auto;
+}
+
+#status-middle {
+    background: $surface;
+    width: 1fr;
+}
+
+#status-right-sep {
+    background: $surface;
+    color: $primary;
+}
+
+#status-right {
+    background: $primary;
+    color: $surface;
+    width: auto;
+    text-style: bold;
+    padding: 0 1;
+}

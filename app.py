@@ -37,7 +37,16 @@ def setup_spotify():
 
 class WizardApp(App):
     """Temporary app for setup and login flows."""
-    CSS_PATH = "styles/main.tcss"
+    CSS_PATH = [
+        "styles/_variables.tcss",
+        "styles/_base.tcss",
+        "styles/_status_bar.tcss",
+        "styles/_now_playing.tcss",
+        "styles/_main_view.tcss",
+        "styles/_modals.tcss",
+        "styles/_telescope.tcss",
+        "styles/_onboarding.tcss",
+    ]
     def __init__(self, start_screen):
         super().__init__()
         self.start_screen = start_screen

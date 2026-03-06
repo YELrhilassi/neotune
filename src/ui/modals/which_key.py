@@ -60,7 +60,7 @@ class WhichKeyPopup(BaseModal):
                 categories[cat].append((key, desc))
             
         # Let's chunk categories or items into pages.
-        ITEMS_PER_PAGE = 14
+        ITEMS_PER_PAGE = 30
         pages = []
         current_page_items = []
         
@@ -81,16 +81,14 @@ class WhichKeyPopup(BaseModal):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="which-key-dialog"):
-            yield Label("[bold #89b4fa]Which Key?[/]", id="which-key-title")
             with Vertical(id="which-key-content"):
                 yield Label("Loading...", id="which-key-page-content")
-            yield Label(self._get_page_indicator(), id="which-key-footer")
 
     def _get_page_indicator(self) -> str:
         total = len(self.pages)
         if total <= 1:
-            return "[dim]esc to close[/]"
-        return f"[dim]Page {self.current_page + 1}/{total} • ◀/▶ to paginate • esc to close[/]"
+            return "esc to close"
+        return f"Page {self.current_page + 1}/{total} • ◀/▶ to paginate • esc to close"
 
     def watch_current_page(self, new_page: int):
         self.update_content()
@@ -98,31 +96,43 @@ class WhichKeyPopup(BaseModal):
     def update_content(self):
         try:
             content_label = self.query_one("#which-key-page-content", Label)
-            footer_label = self.query_one("#which-key-footer", Label)
+            dialog = self.query_one("#which-key-dialog")
         except Exception:
             return
             
         items = self.pages[self.current_page]
         
-        # Group current page items by category for display
-        display_cats = {}
-        for cat, k, d in items:
-            if cat not in display_cats:
-                display_cats[cat] = []
-            display_cats[cat].append((k, d))
+        import math
+        
+        num_cols = 2
+        num_rows = math.ceil(len(items) / num_cols)
+        
+        lines = []
+        for r in range(num_rows):
+            col1_idx = r
+            col2_idx = r + num_rows
             
-        text = ""
-        for cat, cat_items in display_cats.items():
-            text += f"[bold #f38ba8]{cat}[/]\n"
-            for k, d in cat_items:
-                # Format key and description
-                text += f"  [bold #a6e3a1]{str(k):<10}[/] [dim]→[/] [#cdd6f4]{d}[/]\n"
-            text += "\n"
+            # Format column 1
+            cat1, k1, d1 = items[col1_idx]
+            c1_str = f"[bold #a6e3a1]{str(k1):<6}[/] [dim]→[/] [#cdd6f4]{str(d1):<24}[/]"
             
-        content_label.update(text.strip())
-        footer_label.update(self._get_page_indicator())
+            # Format column 2 if it exists
+            if col2_idx < len(items):
+                cat2, k2, d2 = items[col2_idx]
+                c2_str = f"[bold #a6e3a1]{str(k2):<6}[/] [dim]→[/] [#cdd6f4]{str(d2)}[/]"
+                lines.append(c1_str + c2_str)
+            else:
+                lines.append(c1_str)
+            
+        content_label.update("\n".join(lines))
+        dialog.border_subtitle = self._get_page_indicator()
 
     def on_mount(self):
+        try:
+            dialog = self.query_one("#which-key-dialog")
+            dialog.border_title = "Which Key?"
+        except Exception:
+            pass
         self.update_content()
 
     def action_previous_page(self):

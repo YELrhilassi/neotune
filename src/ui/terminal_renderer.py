@@ -23,9 +23,18 @@ from src.ui.components.sidebar import SidebarPanels
 from src.ui.components.track_table import TrackList
 from src.ui.components.status_bar import StatusBar
 from src.ui.modals.which_key import WhichKeyPopup
+from src.ui.themes import THEMES
 
 class TerminalRenderer(App):
-    CSS_PATH = "../../styles/main.tcss"
+    CSS_PATH = [
+        "../../styles/_base.tcss",
+        "../../styles/_status_bar.tcss",
+        "../../styles/_now_playing.tcss",
+        "../../styles/_main_view.tcss",
+        "../../styles/_modals.tcss",
+        "../../styles/_telescope.tcss",
+        "../../styles/_onboarding.tcss",
+    ]
 
     BINDINGS = [
         Binding("tab", "focus_next", "Focus Next"),
@@ -44,6 +53,10 @@ class TerminalRenderer(App):
         self.leader_mode = False
         self.leader_timer = None
 
+        # Register all available themes
+        for theme in THEMES.values():
+            self.register_theme(theme)
+
     def action_show_logs(self):
         from src.ui.modals.log_modal import LogModal
         self.push_screen(LogModal())
@@ -57,8 +70,15 @@ class TerminalRenderer(App):
         # Fallback to default toast
         super().notify(message, title=title, severity=severity, timeout=timeout)
 
+    def apply_theme(self, theme_name: str):
+        if theme_name in THEMES:
+            self.theme = theme_name
+
     def on_mount(self) -> None:
         self.title = "Spotify TUI"
+        
+        # Apply theme from user preferences
+        self.apply_theme(self.user_prefs.theme)
         
         self.run_startup_sequence()
 

@@ -1,0 +1,35 @@
+#now-playing {
+    height: auto;
+    dock: top;
+    background: $background;
+    border: round $accent;
+    margin: 1 2 0 2;
+    padding: 1 2;
+}
+
+#np-container {
+    height: auto;
+    layout: horizontal;
+    align: left middle;
+}
+
+#np-info {
+    width: 1fr;
+    height: auto;
+    content-align: left middle;
+}
+
+#np-controls {
+    width: auto;
+    height: auto;
+    content-align: right middle;
+    align: right middle;
+}
+
+#np-track-name, #np-artist-name {
+    height: auto;
+}
+
+#np-shuffle-icon, #np-repeat-icon {
+    margin-left: 1;
+}

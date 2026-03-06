@@ -8,12 +8,10 @@ class ThemeSelector(BaseModal[str]):
         super().__init__()
         self.current_theme = current_theme
         self.themes = [
-            "default",
+            "catppuccin",
+            "nord",
             "dracula",
-            "tokyo-night",
-            "catppuccin-mocha",
-            "kanagawa",
-            "omarchy-midnight"
+            "tokyo-night"
         ]
 
     def compose(self) -> ComposeResult:

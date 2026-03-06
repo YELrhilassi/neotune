@@ -1,5 +1,5 @@
 from textual.app import ComposeResult
-from textual.widgets import OptionList, Input
+from textual.widgets import OptionList, Input, TabbedContent, TabPane
 from textual.containers import Horizontal, Vertical
 from textual.binding import Binding
 from textual.reactive import reactive
@@ -13,7 +13,6 @@ from src.core.utils import strip_icons
 
 # Components
 from src.ui.modals.telescope.header import TelescopeHeader, TelescopeInput
-from src.ui.modals.telescope.tabs import TelescopeTabs
 from src.ui.modals.telescope.results import TelescopeResults
 from src.ui.modals.telescope.preview import TelescopePreview
 
@@ -31,7 +30,6 @@ class TelescopePrompt(BaseModal[str]):
         Binding("L", "next_category", "Next Category"),
     ]
 
-    active_category = reactive("tracks")
     input_mode = reactive("NORMAL")
 
     def __init__(self, initial_query: str = ""):
@@ -42,11 +40,7 @@ class TelescopePrompt(BaseModal[str]):
 
     def on_mount(self):
         self.header = self.query_one(TelescopeHeader)
-        self.tabs = self.query_one(TelescopeTabs)
-        self.results_list = self.query_one(TelescopeResults)
-        self.preview = self.query_one(TelescopePreview)
         self.input = self.header.query_one(TelescopeInput)
-        self.preview_list = self.preview.query_one("#telescope-preview-tracks")
         
         self.input.focus()
         if self.initial_query:
@@ -59,10 +53,38 @@ class TelescopePrompt(BaseModal[str]):
     def compose(self) -> ComposeResult:
         with Vertical(id="telescope-wrapper"):
             yield TelescopeHeader(id="telescope-header")
-            yield TelescopeTabs(id="telescope-tabs")
-            with Horizontal(id="telescope-body"):
-                yield TelescopeResults(id="telescope-results")
-                yield TelescopePreview(id="telescope-preview")
+            with TabbedContent(initial="tracks", id="telescope-tabs"):
+                with TabPane("Songs", id="tracks"):
+                    with Horizontal(classes="telescope-body"):
+                        yield TelescopeResults(classes="telescope-results", id="results-tracks")
+                        yield TelescopePreview(classes="telescope-preview", id="preview-tracks")
+                with TabPane("Albums", id="albums"):
+                    with Horizontal(classes="telescope-body"):
+                        yield TelescopeResults(classes="telescope-results", id="results-albums")
+                        yield TelescopePreview(classes="telescope-preview", id="preview-albums")
+                with TabPane("Playlists", id="playlists"):
+                    with Horizontal(classes="telescope-body"):
+                        yield TelescopeResults(classes="telescope-results", id="results-playlists")
+                        yield TelescopePreview(classes="telescope-preview", id="preview-playlists")
+
+    @property
+    def active_category(self) -> str:
+        try:
+            return self.query_one(TabbedContent).active
+        except Exception:
+            return "tracks"
+
+    @property
+    def results_list(self) -> OptionList:
+        return self.query_one(f"#results-{self.active_category} .telescope-results-list", OptionList)
+
+    @property
+    def preview(self) -> TelescopePreview:
+        return self.query_one(f"#preview-{self.active_category}", TelescopePreview)
+
+    @property
+    def preview_list(self) -> OptionList:
+        return self.preview.query_one(".telescope-preview-tracks", OptionList)
 
     def action_handle_escape(self):
         if self.input_mode == "NORMAL":
@@ -72,52 +94,63 @@ class TelescopePrompt(BaseModal[str]):
         self.input_mode = message.mode
 
     def on_telescope_input_navigate(self, message: TelescopeInput.Navigate):
+        try:
+            results_list = self.results_list
+            preview_list = self.preview_list
+        except Exception:
+            return
+            
         if message.direction == "next":
-            self.results_list.focus()
+            results_list.focus()
         elif message.direction == "prev":
-            if self.preview_list.display:
-                self.preview_list.focus()
+            if preview_list.display:
+                preview_list.focus()
             else:
-                self.results_list.focus()
+                results_list.focus()
         elif message.direction == "down":
-            self.results_list.focus()
+            results_list.focus()
         elif message.direction == "right":
-            if self.preview_list.display:
-                self.preview_list.focus()
+            if preview_list.display:
+                preview_list.focus()
         elif message.direction == "tab_prev":
             self.action_prev_category()
         elif message.direction == "tab_next":
             self.action_next_category()
 
     def action_focus_next(self):
-        if self.input.has_focus:
-            self.results_list.focus()
-        else:
-            self.input.focus()
+        try:
+            if self.input.has_focus:
+                self.results_list.focus()
+            else:
+                self.input.focus()
+        except Exception:
+            pass
 
     def action_focus_previous(self):
-        if self.input.has_focus:
-            if self.preview_list.display:
-                self.preview_list.focus()
+        try:
+            if self.input.has_focus:
+                if self.preview_list.display:
+                    self.preview_list.focus()
+                else:
+                    self.results_list.focus()
             else:
-                self.results_list.focus()
-        else:
-            self.input.focus()
+                self.input.focus()
+        except Exception:
+            pass
 
     def action_next_category(self):
         cats = ["tracks", "albums", "playlists"]
         idx = cats.index(self.active_category)
-        self.active_category = cats[(idx + 1) % 3]
+        self.query_one(TabbedContent).active = cats[(idx + 1) % 3]
 
     def action_prev_category(self):
         cats = ["tracks", "albums", "playlists"]
         idx = cats.index(self.active_category)
-        self.active_category = cats[(idx - 1) % 3]
+        self.query_one(TabbedContent).active = cats[(idx - 1) % 3]
 
-    def watch_active_category(self, new_cat: str):
-        if hasattr(self, "tabs"):
-            self.tabs.update_tabs(new_cat)
-            self._refresh_results_list()
+    def on_tabbed_content_tab_activated(self, event):
+        # When tab changes, populate if needed.
+        self._refresh_results_list()
 
     def watch_input_mode(self, mode: str):
         if hasattr(self, "header"):
@@ -136,10 +169,16 @@ class TelescopePrompt(BaseModal[str]):
         if self.search_timer:
             self.search_timer.stop()
         if query:
+            for cat in ["tracks", "albums", "playlists"]:
+                try:
+                    lst = self.query_one(f"#results-{cat} .telescope-results-list", OptionList)
+                    lst.loading = True
+                except Exception:
+                    pass
             self.search_timer = self.set_timer(0.3, lambda: self.perform_search(query))
         else:
             self.results_data = {"tracks": [], "albums": [], "playlists": []}
-            self._refresh_results_list()
+            self._refresh_all_lists()
 
     @work(exclusive=True, thread=True)
     def perform_search(self, query: str):
@@ -148,14 +187,33 @@ class TelescopePrompt(BaseModal[str]):
 
     def _handle_search_results(self, results):
         self.results_data = results
-        self._refresh_results_list()
+        self._refresh_all_lists()
+
+    def _refresh_all_lists(self):
+        for cat in ["tracks", "albums", "playlists"]:
+            data = self.results_data.get(cat, [])
+            try:
+                # Update list first, then remove loading from inner OptionList
+                res_container = self.query_one(f"#results-{cat}", TelescopeResults)
+                res_container.update_list(cat, data)
+                lst = res_container.query_one(".telescope-results-list", OptionList)
+                lst.loading = False
+            except Exception:
+                pass
 
     def _refresh_results_list(self):
-        data = self.results_data.get(self.active_category, [])
-        self.results_list.update_list(self.active_category, data)
+        # We don't need to rebuild options every time a tab is switched now.
+        pass
 
     def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted):
-        if event.option_list.id == "telescope-preview-tracks":
+        # We only care about the currently active results list
+        try:
+            results_list = self.results_list
+            preview = self.preview
+        except Exception:
+            return
+            
+        if event.option_list != results_list:
             return
 
         current_data = self.results_data.get(self.active_category, [])
@@ -163,10 +221,16 @@ class TelescopePrompt(BaseModal[str]):
             return
             
         data = current_data[event.option_index]
-        self.preview.update_preview(self.active_category, data)
+        preview.update_preview(self.active_category, data)
         
         if self.fetch_timer: self.fetch_timer.stop()
         
+        if self.active_category in ["albums", "playlists"]:
+            try:
+                preview.query_one(".telescope-preview-tracks", OptionList).loading = True
+            except Exception:
+                pass
+
         if self.active_category == "albums":
             self.fetch_timer = self.set_timer(0.4, lambda: self.fetch_album_details(data.get('id')))
         elif self.active_category == "playlists":
@@ -186,10 +250,21 @@ class TelescopePrompt(BaseModal[str]):
 
     def _handle_preview_tracks(self, tracks):
         self.preview_data = tracks
-        self.preview.update_tracks(tracks)
+        try:
+            preview_tracks_list = self.preview.query_one(".telescope-preview-tracks", OptionList)
+            preview_tracks_list.loading = False
+            self.preview.update_tracks(tracks)
+        except Exception:
+            pass
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected):
-        if event.option_list.id == "telescope-preview-tracks":
+        try:
+            preview_list = self.preview_list
+            results_list = self.results_list
+        except Exception:
+            return
+            
+        if event.option_list == preview_list:
             if not self.preview_data or event.option_index >= len(self.preview_data):
                 return
             uri = self.preview_data[event.option_index].get("uri")
@@ -198,7 +273,8 @@ class TelescopePrompt(BaseModal[str]):
                 if usePlayTrack(uri, self.app): self.app.update_now_playing()
             return
             
-        self._handle_selection(event.option_index)
+        if event.option_list == results_list:
+            self._handle_selection(event.option_index)
 
     def _handle_selection(self, index: int):
         current_data = self.results_data.get(self.active_category, [])
@@ -236,17 +312,12 @@ class TelescopePrompt(BaseModal[str]):
         except Exception: pass
 
     def on_key(self, event: events.Key):
-        # We handle modal navigation keys here. 
-        # Characters for the input are now strictly handled by TelescopeInput._on_key
         if self.input.has_focus:
-            # If input has focus, all keys are handled by the widget itself (blocked or passed through).
-            # The only thing we catch here is what the widget lets bubble.
             return
 
         focused_widget = self.focused
         if focused_widget is None: return
 
-        # VIM Navigation (j/k/h/l)
         if event.character == "j":
             if hasattr(focused_widget, "action_cursor_down"): focused_widget.action_cursor_down()
             event.prevent_default()
@@ -255,12 +326,18 @@ class TelescopePrompt(BaseModal[str]):
             else: self.input.focus()
             event.prevent_default()
         elif event.character == "h":
-            if focused_widget.id == "telescope-preview-tracks": self.results_list.focus()
-            else: self.input.focus()
+            try:
+                if focused_widget == self.preview_list: self.results_list.focus()
+                else: self.input.focus()
+            except Exception:
+                pass
             event.prevent_default()
         elif event.character == "l":
-            if focused_widget.id == "telescope-results" and self.preview_list.display:
-                self.preview_list.focus()
+            try:
+                if focused_widget == self.results_list and self.preview_list.display:
+                    self.preview_list.focus()
+            except Exception:
+                pass
             event.prevent_default()
         elif event.character == "U":
             if hasattr(focused_widget, "action_page_up"): focused_widget.action_page_up()

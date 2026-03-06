@@ -1,0 +1,26 @@
+#main-container {
+    height: 1fr;
+    layout: horizontal;
+}
+
+#sidebar {
+    width: 35;
+    height: 1fr;
+    dock: left;
+    border: round $panel;
+}
+
+#sidebar:focus {
+    border: round $accent;
+}
+
+#track-list {
+    height: 1fr;
+    width: 1fr;
+    background: $background;
+    border: round $panel;
+}
+
+#track-list:focus {
+    border: round $primary;
+}

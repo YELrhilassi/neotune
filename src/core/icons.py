@@ -22,3 +22,4 @@ class Icons:
     REMOVE = ""
     RADIO = ""
     UNKNOWN = ""
+    TELESCOPE = ""

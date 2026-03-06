@@ -98,6 +98,7 @@ class TelescopeInput(Input):
 
 class TelescopeHeader(Horizontal):
     def compose(self) -> ComposeResult:
-        yield Label("🔍", id="telescope-icon")
+        from src.core.icons import Icons
+        yield Label(Icons.TELESCOPE, id="telescope-icon")
         yield TelescopeInput(placeholder="Search Spotify...", id="telescope-input")
         yield Label("[dim] [i/a] Insert • [H/L] Tabs • [h/l] Panels • [j/k] Move [/]", id="telescope-hints")

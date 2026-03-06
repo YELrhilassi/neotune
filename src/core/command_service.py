@@ -66,7 +66,8 @@ class CommandService:
             def on_theme_selected(theme_name: str):
                 if theme_name:
                     prefs.save_theme(theme_name)
-                    app_instance.notify(f"Theme '{theme_name}' saved. Restart to apply.", severity="information")
+                    app_instance.apply_theme(theme_name)
+                    app_instance.notify(f"Theme '{theme_name}' applied.")
             app_instance.push_screen(ThemeSelector(prefs.theme), on_theme_selected)
         elif action == "command_prompt":
             app_instance.push_screen(CommandPrompt())

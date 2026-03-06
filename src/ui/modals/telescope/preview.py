@@ -7,15 +7,24 @@ from src.core.utils import strip_icons
 
 class TelescopePreview(Vertical):
     def compose(self) -> ComposeResult:
-        yield Static("Select an item to see details", id="telescope-preview-info")
-        yield OptionList(id="telescope-preview-tracks")
+        yield Static(f"[bold #a6adc8]{Icons.SEARCH} Select an item to see details[/]", classes="telescope-empty-state")
+        yield Static("", classes="telescope-preview-info")
+        yield OptionList(classes="telescope-preview-tracks")
 
     def update_preview(self, category: str, data: dict):
-        info_panel = self.query_one("#telescope-preview-info", Static)
-        tracks_list = self.query_one("#telescope-preview-tracks", OptionList)
-        tracks_list.display = False
+        empty_state = self.query_one(".telescope-empty-state", Static)
+        info_panel = self.query_one(".telescope-preview-info", Static)
+        tracks_list = self.query_one(".telescope-preview-tracks", OptionList)
         
-        if not data: return
+        if not data:
+            empty_state.display = True
+            info_panel.display = False
+            tracks_list.display = False
+            return
+
+        empty_state.display = False
+        info_panel.display = True
+        tracks_list.display = False
 
         if category == "tracks":
             artists = ", ".join([strip_icons(a['name']) for a in data.get('artists', []) if a and a.get('name')])
@@ -59,7 +68,7 @@ class TelescopePreview(Vertical):
             tracks_list.add_option("Loading tracks...")
 
     def update_tracks(self, tracks: list):
-        tracks_list = self.query_one("#telescope-preview-tracks", OptionList)
+        tracks_list = self.query_one(".telescope-preview-tracks", OptionList)
         tracks_list.clear_options()
         if not tracks:
             tracks_list.add_option("No tracks found.")

@@ -1,1 +1,1 @@
-spotify_tui.set_theme("tokyo-night")
+spotify_tui.set_theme("catppuccin")

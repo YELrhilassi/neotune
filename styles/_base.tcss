@@ -1,0 +1,59 @@
+Screen {
+    layout: vertical;
+    background: $background;
+    color: $text;
+}
+
+/* Hide Visual Scrollbars globally */
+* {
+    scrollbar-size: 0 0;
+}
+
+/* Generic Widget Styles */
+Tree {
+    background: $background;
+    color: $text;
+    padding: 1;
+}
+
+Tree > .tree--cursor {
+    background: $panel;
+    color: $primary;
+    text-style: bold;
+}
+
+DataTable {
+    background: $background;
+}
+
+DataTable > .datatable--header {
+    background: $background;
+    color: $text-muted;
+    text-style: bold;
+    border-bottom: solid $panel;
+}
+
+DataTable > .datatable--cursor {
+    background: $accent;
+    color: $surface;
+    text-style: bold;
+}
+
+OptionList {
+    background: transparent;
+    border: round $panel;
+}
+
+OptionList:focus {
+    border: round $primary;
+}
+
+OptionList > .option-list--option {
+    padding: 0 1;
+}
+
+OptionList > .option-list--option-highlighted {
+    background: $panel;
+    text-style: bold;
+    color: $success;
+}
