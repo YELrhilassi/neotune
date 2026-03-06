@@ -21,19 +21,10 @@ async def useDaemonService(app):
                 player.restart()
                 await asyncio.sleep(3)
                 
-            # 2. Check Spotify connectivity
-            playback = network.get_current_playback()
-            # If no device is active, try to force-activate the local player
-            is_device_lost = not playback or not playback.get('device') or not playback['device'].get('is_active')
+            # We removed the aggressive active device polling (is_device_lost check)
+            # because transferring playback in the background randomly interrupts
+            # continuous playback and causes the player to restart songs.
             
-            if is_device_lost:
-                # Silently wake up the device
-                # This ensures the daemon registers as 'Active' even if paused
-                await useEnsureActiveDevice(app, silent=True)
-                # Check again soon
-                await asyncio.sleep(10)
-                continue
-                
         except Exception:
             # Prevent background service from crashing the whole app
             pass
