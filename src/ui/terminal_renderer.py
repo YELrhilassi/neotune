@@ -1,7 +1,7 @@
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal
 from textual.binding import Binding
-from textual import events
+from textual import events, work
 
 from src.core.di import Container
 from src.state.store import Store
@@ -16,6 +16,7 @@ from src.hooks.useSwitchToLocalPlayer import useSwitchToLocalPlayer
 from src.hooks.useRefreshData import useRefreshData
 from src.hooks.useUpdateNowPlaying import useUpdateNowPlaying
 from src.hooks.useAutoPlay import useAutoPlay
+from src.hooks.useDaemonService import useDaemonService
 
 from src.ui.components.now_playing import NowPlaying
 from src.ui.components.sidebar import SidebarPanels
@@ -28,10 +29,12 @@ class TerminalRenderer(App):
 
     BINDINGS = [
         Binding("tab", "focus_next", "Focus Next"),
+        Binding("ctrl+l", "show_logs", "Show Logs"),
     ]
 
     def __init__(self):
         super().__init__()
+        self._log_buffer = [] # Store logs for the LogModal
         self.store = Container.resolve(Store)
         self.network = Container.resolve(SpotifyNetwork)
         self.local_player = Container.resolve(LocalPlayer)
@@ -41,6 +44,15 @@ class TerminalRenderer(App):
         self.leader_mode = False
         self.leader_timer = None
 
+    def action_show_logs(self):
+        from src.ui.modals.log_modal import LogModal
+        self.push_screen(LogModal())
+
+    def app_log(self, message: str):
+        self._log_buffer.append(message)
+        # Also let Textual's internal logger handle it
+        self.log(message)
+
     def notify(self, message: str, *, title: str = "", severity: str = "information", timeout: float = 3.0, **kwargs):
         # Fallback to default toast
         super().notify(message, title=title, severity=severity, timeout=timeout)
@@ -48,20 +60,26 @@ class TerminalRenderer(App):
     def on_mount(self) -> None:
         self.title = "Spotify TUI"
         
-        self.set_timer(0.1, lambda: useEnsureActiveDevice(self))
-        
+        self.run_startup_sequence()
+
+    @work(exclusive=True)
+    async def run_startup_sequence(self):
+        await useEnsureActiveDevice(self, silent=False)
         self.refresh_data()
         
         recent = self.store.get("recently_played")
         if recent:
             self.store.set("current_tracks", recent)
         
-        self.set_timer(1.0, lambda: useSwitchToLocalPlayer(self))
-        self.set_timer(2.0, lambda: useAutoPlay(self))
+        await useSwitchToLocalPlayer(self)
+        self.set_timer(1.0, lambda: useAutoPlay(self))
         
         self.update_now_playing()
         self.set_interval(5.0, self.update_now_playing)
         self.set_interval(60.0, self.check_authentication)
+
+        # Launch background self-healing daemon service
+        await useDaemonService(self)
 
     def check_authentication(self):
         if not self.network.is_authenticated():
@@ -82,23 +100,32 @@ class TerminalRenderer(App):
             self.local_player.stop()
 
     def safe_network_call(self, func, *args, **kwargs):
-        self.log(f"[DEBUG] safe_network_call: attempting to call {func}")
         if not self.network:
-            self.log("[DEBUG] safe_network_call: network is None")
             return None
         try:
-            result = func(*args, **kwargs)
-            self.log(f"[DEBUG] safe_network_call: call successful, result: {result}")
-            return result
+            return func(*args, **kwargs)
         except SpotifyOauthError as e:
-            self.log(f"[DEBUG] safe_network_call: SpotifyOauthError: {e}")
             self.notify(f"Authentication error: {e}. Attempting re-authentication.", severity="error")
             self.check_authentication()
             return None
         except Exception as e:
-            self.log(f"[DEBUG] safe_network_call: Exception: {e}")
+            # Handle "No Active Device" by attempting a silent re-activation
+            if "No active device" in str(e):
+                self.run_background_recovery()
+                # Try the call one more time after a short delay
+                try:
+                    import time
+                    time.sleep(1) 
+                    return func(*args, **kwargs)
+                except Exception:
+                    pass
+            
             self.notify(f"Spotify API Error: {e}", severity="error")
             return None
+
+    @work(exclusive=True)
+    async def run_background_recovery(self):
+        await useEnsureActiveDevice(self, silent=True)
 
     def compose(self) -> ComposeResult:
         yield NowPlaying(id="now-playing")
