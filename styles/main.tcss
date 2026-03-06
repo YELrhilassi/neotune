@@ -169,51 +169,8 @@ WhichKeyPopup {
     padding: 1 2;
 }
 
-#search-container {
-    width: 80%;
-    height: 80%;
-    border: round #89b4fa; /* Blue */
-    background: #181825;
-    padding: 1;
-}
-
-#search-input {
-    dock: top;
-    margin-bottom: 1;
-    background: #1e1e2e;
-    color: #cdd6f4;
-    border: round #313244;
-}
-
-#search-input:focus {
-    border: round #89b4fa;
-}
-
-#search-body {
-    height: 1fr;
-}
-
-#search-results {
-    width: 60%;
-    height: 1fr;
-    border: none;
-    border-right: solid #313244;
-    background: transparent;
-}
-
-#search-results:focus {
-    border-right: solid #a6e3a1;
-}
-
-#search-info {
-    width: 40%;
-    height: 1fr;
-    padding: 1 2;
-    content-align: left top;
-}
-
 OptionList {
-    background: #181825;
+    background: transparent;
     border: round #313244;
 }
 
@@ -229,4 +186,114 @@ OptionList > .option-list--option-highlighted {
     background: #313244;
     text-style: bold;
     color: #a6e3a1;
+}
+
+/* Command Prompt (Noice style) */
+CommandPrompt {
+    align: center bottom;
+    padding-bottom: 2;
+    background: transparent;
+}
+
+#command-prompt-container {
+    width: 60%;
+    height: auto;
+    background: #181825;
+    border: round #cba6f7;
+    padding: 1 2;
+}
+
+#command-input {
+    background: #1e1e2e;
+    color: #cdd6f4;
+    border: none;
+}
+
+#command-results {
+    height: auto;
+    max-height: 10;
+    margin-top: 1;
+    background: transparent;
+    border: none;
+}
+
+/* Telescope Search styling overrides */
+TelescopePrompt {
+    align: center middle;
+    background: rgba(17, 17, 27, 0.85); /* Dark transparent */
+}
+
+#telescope-wrapper {
+    width: 80%;
+    height: 80%;
+    background: transparent;
+    border: none;
+    layout: vertical;
+}
+
+#telescope-header {
+    height: 3;
+    dock: top;
+    border: round #313244;
+    background: #1e1e2e;
+    margin-bottom: 1;
+}
+#telescope-header:focus-within {
+    border: round #89b4fa; /* Blue active border */
+}
+
+#telescope-icon {
+    padding: 1;
+    color: #a6e3a1;
+}
+
+#telescope-input {
+    width: 1fr;
+    border: none;
+    background: transparent;
+    color: #cdd6f4;
+}
+
+#telescope-body {
+    height: 1fr;
+    layout: horizontal;
+}
+
+#telescope-results {
+    width: 50%;
+    height: 1fr;
+    border: round #313244;
+    background: #1e1e2e;
+    margin-right: 1;
+}
+
+#telescope-results:focus {
+    border: round #89b4fa;
+}
+
+#telescope-preview {
+    width: 50%;
+    height: 1fr;
+    border: round #313244;
+    background: #1e1e2e;
+    padding: 1;
+    layout: vertical;
+}
+
+#telescope-preview:focus-within {
+    border: round #89b4fa;
+}
+
+#telescope-preview-info {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#telescope-preview-tracks {
+    border: none;
+    background: transparent;
+    height: 1fr;
+}
+#telescope-preview-tracks:focus {
+    border: none;
 }

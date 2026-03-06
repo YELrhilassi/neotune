@@ -37,6 +37,14 @@ class SpotifyNetwork:
         results = self.sp.playlist_items(playlist_id, limit=limit)
         return results.get('items', [])
 
+    def get_album_tracks(self, album_id, limit=50):
+        if not self.sp: return []
+        try:
+            results = self.sp.album_tracks(album_id, limit=limit)
+            return results.get('items', [])
+        except Exception:
+            return []
+
     def get_featured_playlists(self, limit=20):
         if not self.sp: return []
         try:
@@ -53,16 +61,25 @@ class SpotifyNetwork:
         except Exception:
             return []
 
-    def search(self, query, qtype="track", limit=50):
+    def search(self, query, qtype="track,playlist,album", limit=50):
         if not self.sp: return []
         try:
             results = self.sp.search(q=query, type=qtype, limit=limit)
-            if qtype == "track":
-                return results.get('tracks', {}).get('items', [])
-            elif qtype == "playlist":
-                return results.get('playlists', {}).get('items', [])
-            return []
-        except Exception:
+            if not results:
+                return []
+                
+            items = []
+            if "track" in qtype and results.get('tracks'):
+                for t in results.get('tracks', {}).get('items', []):
+                    items.append({"_qtype": "track", "data": t})
+            if "album" in qtype and results.get('albums'):
+                for a in results.get('albums', {}).get('items', []):
+                    items.append({"_qtype": "album", "data": a})
+            if "playlist" in qtype and results.get('playlists'):
+                for p in results.get('playlists', {}).get('items', []):
+                    items.append({"_qtype": "playlist", "data": p})
+            return items
+        except Exception as e:
             return []
 
     def get_current_playback(self):
