@@ -36,6 +36,15 @@ class WhichKeyPopup(BaseModal):
         kb = self.prefs.keybindings or {}
         for key, val in kb.items():
             all_keys.append(("Leader Actions", key, val['desc']))
+
+        # 4. Telescope (if active)
+        if any(type(s).__name__ == "TelescopePrompt" for s in self.app.screen_stack):
+            all_keys.append(("Telescope", "H", "Prev Category"))
+            all_keys.append(("Telescope", "L", "Next Category"))
+            all_keys.append(("Telescope", "h", "Panel Left / Search"))
+            all_keys.append(("Telescope", "l", "Panel Right / Preview"))
+            all_keys.append(("Telescope", "j/k", "Navigate List"))
+            all_keys.append(("Telescope", "U/D", "Page Up/Down"))
             
         # Group by category
         categories = {}

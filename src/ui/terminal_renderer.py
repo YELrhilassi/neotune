@@ -41,12 +41,6 @@ class TerminalRenderer(App):
         self.leader_timer = None
 
     def notify(self, message: str, *, title: str = "", severity: str = "information", timeout: float = 3.0, **kwargs):
-        # Update Status Bar notification
-        try:
-            status_bar = self.query_one(StatusBar)
-            status_bar.notification = message
-        except Exception:
-            pass
         # Fallback to default toast
         super().notify(message, title=title, severity=severity, timeout=timeout)
 
@@ -170,11 +164,16 @@ class TerminalRenderer(App):
             elif event.key == "right" and self.is_screen_active("WhichKeyPopup"):
                 self.screen.action_next_page()
             elif char:
-                # If we were in leader mode and hit '/', update mode to SEARCH
-                if char == "/":
+                # Get the action for this key
+                kb = self.user_prefs.keybindings
+                action = kb.get(char, {}).get("action")
+                
+                # If action is search_prompt, update mode to SEARCH
+                if action == "search_prompt":
                     try:
                         self.query_one(StatusBar).mode = "SEARCH"
                     except Exception: pass
+                    
                 self.handle_leader_command(char)
             else:
                 self.cancel_leader() # Cancel on any other unhandled non-character key (like F1)

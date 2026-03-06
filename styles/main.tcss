@@ -69,20 +69,8 @@ Screen {
     width: 1fr;
 }
 
-#status-notif-sep {
-    background: #181825;
-    color: #313244;
-}
-
-#status-notification {
-    background: #313244;
-    color: #f38ba8;
-    width: auto;
-    max-width: 35;
-}
-
 #status-right-sep {
-    background: #313244;
+    background: #181825;
     color: #89b4fa;
 }
 
@@ -288,8 +276,8 @@ TelescopePrompt {
 #telescope-wrapper {
     width: 80%;
     height: 80%;
-    background:  #1e1e2e;
-    border: round #f5c2e7;
+    background: #181825; /* Darker sectional background */
+    border: none;
     layout: vertical;
 }
 
@@ -297,10 +285,37 @@ TelescopePrompt {
     height: 3;
     dock: top;
     border: round #313244;
-    background: #1e1e2e;
+    background: transparent;
+    margin-bottom: 0;
 }
 #telescope-header:focus-within {
     border: round #89b4fa; /* Blue active border */
+}
+
+#telescope-header.insert-mode {
+    border: round #a6e3a1; /* Green border for insert mode */
+}
+
+#telescope-tabs {
+    height: 3;
+    background: transparent;
+    padding: 0 1;
+    margin: 0;
+    align: center middle;
+}
+
+.tab {
+    padding: 0 2;
+    margin: 0 1;
+    background: #313244;
+    color: #a6adc8;
+    border: none;
+}
+
+.tab.active {
+    background: #89b4fa;
+    color: #1e1e2e;
+    text-style: bold;
 }
 
 #telescope-icon {
@@ -313,6 +328,12 @@ TelescopePrompt {
     border: none;
     background: transparent;
     color: #cdd6f4;
+}
+
+#telescope-hints {
+    width: auto;
+    padding-right: 1;
+    content-align: right middle;
 }
 
 #telescope-body {
@@ -329,7 +350,7 @@ TelescopePrompt {
 }
 
 #telescope-results:focus {
-    border: round #89b4fa;
+    border: round #a6e3a1; /* Green highlight */
 }
 
 #telescope-preview {
@@ -342,7 +363,7 @@ TelescopePrompt {
 }
 
 #telescope-preview:focus-within {
-    border: round #89b4fa;
+    border: round #cba6f7; /* Mauve highlight */
 }
 
 #telescope-preview-info {
@@ -356,7 +377,7 @@ TelescopePrompt {
     height: 1fr;
 }
 #telescope-preview-tracks:focus {
-    border: none;
+    background: #181825;
 }
 
 /* Built-in Textual Notifications Overrides */
