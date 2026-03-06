@@ -13,8 +13,8 @@ class ConfirmationModal(BaseModal[bool]):
         with Vertical(id="confirmation-dialog"):
             yield Label(self.message, id="confirmation-message")
             with Horizontal(id="confirmation-buttons"):
-                yield Button("Yes", variant="primary", id="confirm-yes")
-                yield Button("No", variant="error", id="confirm-no")
+                yield Button("Yes", variant="primary", id="confirm-yes", classes="small-btn")
+                yield Button("No", variant="error", id="confirm-no", classes="small-btn")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "confirm-yes":

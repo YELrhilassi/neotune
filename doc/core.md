@@ -2,53 +2,46 @@
 
 ## Overview
 
-The Spotify TUI application is built around a centralized state and a reactive UI architecture. It aims to decouple the user interface from the complexities of the Spotify API and background playback daemons.
+The Spotify TUI application is built around a centralized state, a reactive UI architecture, and a modular logic layer driven by custom hooks. It decouples the user interface from the complexities of the Spotify API and background playback daemons.
 
-## 1. The Central Store (`src/state/store.py`)
+## 1. Modular Logic Layer (Hooks)
 
-The application uses a simple, centralized key-value store for shared state.
+Application logic is organized into focused, reusable **Hooks** in `src/hooks/`. This follows a functional approach, separating business logic from UI components.
 
-- **Purpose**: Acts as the single source of truth for the entire TUI.
-- **Data Flow**: When data is fetched from the network, it is stored in the `Store`. UI components observe or query this store to update their display.
-- **Managed Data**:
-  - Current playback status (active track, progress, volume).
-  - User library data (playlists, saved albums, recently played).
-  - UI state (active view, search queries, notifications).
+- **`useSpotifySearch`**: Handles multi-category search and data normalization.
+- **`usePlayTrack`**: Intelligently handles playback for Tracks, Albums, and Playlists using appropriate Spotify API parameters.
+- **`useLogout`**: Manages the secure wiping of session tokens, daemon caches, and user credentials.
+- **`useEnsureActiveDevice`**: Automates the detection and activation of playback devices on startup.
 
-## 2. Network Interaction (`src/network/spotify_network.py`)
+## 2. Centralized State Store (`src/state/store.py`)
 
-This layer encapsulates all communication with external services.
+A simple key-value store serves as the single source of truth.
 
-- **Spotify API**: Wraps `spotipy` for all web-based API calls (e.g., fetching tracks, searching).
-- **Authentication**: Manages the OAuth2 flow, token caching, and automated refreshes.
-- **Non-blocking**: API calls are handled safely so that intermittent network delays do not freeze the main UI loop.
+- **Data Flow**: Hooks fetch and process data, then update the `Store`.
+- **Reactivity**: UI components observe the `Store` (or are updated by the main loop) to reflect changes in playback, library data, or authentication status.
 
-## 3. Playback Daemon (`src/network/local_player.py`)
+## 3. Composable UI Components (`src/ui/`)
 
-Unlike many other clients, Spotify TUI includes an integrated DRM playback daemon.
+The interface uses the Textual framework with a heavy emphasis on composition.
 
-- **High Fidelity**: Leverages a `spotifyd` binary to support up to 320kbps audio.
-- **Local Control**: Automatically starts, authenticates, and stops the daemon based on application lifecycle.
-- **Integration**: The TUI communicates with the daemon via the Spotify Connect API, allowing for a seamless transition between local and remote playback.
+- **Telescope Architecture**: The search interface is broken into sub-components (`Header`, `Tabs`, `Results`, `Preview`) located in `src/ui/modals/telescope/`.
+- **Status Bar**: A Neovim-inspired status line that dynamically reflects the current `NORMAL`, `LEADER`, or `SEARCH` mode.
+- **Modals**: Specialized screens for authentication, device selection, and action confirmations.
 
-## 4. Lua Configuration Bridge (`src/config/user_prefs.py`)
+## 4. Onboarding & Security
 
-Configurations are not static but are evaluated at runtime using Lua.
+The app handles sensitive data through an integrated wizard.
 
-- **`lupa` Integration**: Embeds a Lua runtime into the Python process.
-- **Bridged API**: Exposes a `spotify_tui` global in Lua that allows users to register keymaps and settings that are instantly reflected in the Python state.
+- **Setup Wizard**: An internal UI flow that collects API credentials and secures them in `~/.config/spotify-tui/client.yml` with `600` permissions.
+- **Authorization Flow**: A "terminal-silent" process that manages Spotify OAuth entirely within the TUI and the user's browser.
 
-## 5. UI Rendering System (`src/ui/`)
+## 5. Playback Daemon (`src/network/local_player.py`)
 
-The interface is built using the Textual framework.
+Integrates the `spotifyd` binary for high-quality DRM playback.
 
-- **Layouts**: Defined in `terminal_renderer.py`, partitioning the terminal into logical regions (Now Playing, Sidebar, Main Content, Status Bar).
-- **Styling**: All visual appearance (colors, borders, spacing) is managed through `styles/main.tcss`.
-- **Modals**: A dedicated modal system (`src/ui/modals/`) handles popups for device selection, audio configuration, and the WhichKey discovery tool.
+- **Lifecycle Management**: Automatically started and stopped by the TUI.
+- **Credential Hand-off**: Securely passes auth tokens to the daemon for a seamless "connect" experience.
 
 ## 6. Dependency Injection (`src/core/di.py`)
 
-A minimal DI container simplifies the management of singletons across the application.
-
-- **Decoupling**: Classes resolve their dependencies (like the `Store` or `SpotifyNetwork`) via the container rather than hard-coding imports or constructor arguments.
-- **Testability**: Facilitates mocking or swapping out services for testing purposes.
+A minimal DI container simplifies singleton management (Network, Store, Prefs) across hooks and components, facilitating testability and clean imports.

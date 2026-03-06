@@ -183,25 +183,23 @@ DeviceSelector, AudioConfigSelector, CommandPopup, SearchPopup, TrackMenuPopup, 
 }
 
 #confirmation-dialog {
-    width: 40;
+    width: 60;
     height: auto;
-    border: none;
+    border: round #f38ba8;
     background: #181825;
     padding: 1 2;
 }
 
 #confirmation-message {
     text-align: center;
-    margin-bottom: 1;
+    width: 100%;
+    margin-bottom: 2;
+    color: #cdd6f4;
 }
 
 #confirmation-buttons {
     align: center middle;
     height: 3;
-}
-
-#confirmation-buttons Button {
-    margin: 0 1;
 }
 
 WhichKeyPopup {
@@ -429,6 +427,11 @@ Toast.-error {
     border: round #f38ba8;
 }
 
+/* Onboarding Screens Centering */
+SetupScreen, LoginScreen {
+    align: center middle;
+}
+
 /* Minimal Setup Screen Redesign */
 #setup-mini-card {
     width: 60;
@@ -471,6 +474,18 @@ Toast.-error {
 
 .minimal-input:focus {
     background: #313244;
+}
+
+.minimal-text-area {
+    margin-bottom: 1;
+    height: 4;
+    border: none;
+    background: #11111b;
+    color: #cdd6f4;
+}
+
+.minimal-text-area:focus {
+    background: #1e1e2e;
 }
 
 #setup-mini-actions, #login-mini-actions {

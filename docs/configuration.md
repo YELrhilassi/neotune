@@ -60,10 +60,21 @@ You can map specific actions to keys using `spotify_tui.map(key, action, descrip
 spotify_tui.map("p", "play_pause", "Play / Pause")
 spotify_tui.map("n", "next_track", "Next Track")
 spotify_tui.map("b", "prev_track", "Previous Track")
-spotify_tui.map("x", "toggle_shuffle", "Toggle Shuffle")
+spotify_tui.map("space", "search_prompt", "Telescope Search")
+spotify_tui.map("Q", "logout", "Logout (Clear session)")
 ```
 
-The third argument (`description`) is used in the **WhichKey** popup to help you discover your mappings.
+Additional actions available for mapping:
+- `toggle_shuffle`: Toggle playback shuffle
+- `cycle_repeat`: Cycle through repeat modes
+- `toggle_sidebar`: Toggle the visibility of the sidebar
+- `theme_selector`: Open the visual theme selector
+- `command_prompt`: Open the command bar (`:`)
+- `search_prompt`: Open the Telescope search bar (`/`)
+- `show_device`: Open the device selector
+- `show_audio`: Open the audio backend configuration
+- `refresh`: Manually refresh all library data
+- `logout`: Wipe all sessions and credentials
 
 ### Navigation Keys
 
@@ -87,23 +98,12 @@ spotify_tui.set_audio("pulseaudio", "default", "320")
 
 **Bitrates**: "96", "160", "320" (Requires Spotify Premium).
 
-## Themes (`theme.lua`)
-
-Set your preferred UI theme:
-
-```lua
--- lua/theme.lua
-spotify_tui.set_theme("catppuccin")
-```
-
-Themes are defined in `styles/main.tcss`, and the `set_theme()` function helps the application select the appropriate classes to apply.
-
 ## Custom Commands (`commands.lua`)
 
 Register command aliases that can be typed directly into the command bar (`:`):
 
 ```lua
 -- lua/commands.lua
-spotify_tui.command("vol+", "volume_up", "Increase volume")
-spotify_tui.command("vol-", "volume_down", "Decrease volume")
+spotify_tui.command("logout", "logout", "Logout and clear all sessions")
+spotify_tui.command("next", "next_track", "Skip to next track")
 ```

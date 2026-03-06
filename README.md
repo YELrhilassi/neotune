@@ -2,15 +2,27 @@
 
 A sleek, Neovim-inspired Spotify client for the terminal, built with Python and [Textual](https://textual.textualize.io/). 
 
-![Spotify TUI Screenshot](https://via.placeholder.com/800x450?text=Spotify+TUI+Screenshot)
+## Gallery
+
+| Main Player Interface | Telescope Search (Multi-modal) |
+| --- | --- |
+| ![Main UI](https://via.placeholder.com/400x250?text=Main+Player+UI) | ![Telescope Search](https://via.placeholder.com/400x250?text=Telescope+Search+Tabs) |
+| *Sleek dashboard with Neovim status bar* | *Search with categorized preview panels* |
+
+| Onboarding Setup | WhichKey Discovery |
+| --- | --- |
+| ![Setup Wizard](https://via.placeholder.com/400x250?text=Minimal+Setup+Wizard) | ![WhichKey Popup](https://via.placeholder.com/400x250?text=WhichKey+Popup) |
+| *Terminal-silent configuration flow* | *Context-aware command suggestions* |
 
 ## Features
 
-- **Neovim-style Workflow**: Uses a leader key (default: `space`) for actions, just like your favorite editor.
+- **Neovim-style Workflow**: Uses a leader key (default: `space`) for actions, featuring `NORMAL`, `LEADER`, and `SEARCH` modes.
+- **Interactive Setup**: No need for manual `.env` configuration. The app guides you through an internal setup and authorization wizard on your first launch.
+- **Advanced Telescope Search**: A powerful, multi-modal search interface for Songs, Albums, and Playlists with interactive previews and direct playback.
 - **Lua Configuration**: Fully customizable through Lua scripts. Define your own keymaps, themes, and commands.
-- **WhichKey Popup**: A discoverable keybinding menu that helps you find your mappings on the fly.
-- **High-Quality DRM Playback**: Integrated `spotifyd` daemon support for 320kbps audio.
-- **Responsive UI**: Fast, modern terminal interface with full mouse support and customizable themes.
+- **WhichKey Popup**: A discoverable keybinding menu that adapts to your current context.
+- **High-Quality DRM Playback**: Integrated `spotifyd` daemon support for premium 320kbps audio.
+- **Minimalist Aesthetic**: Fast, modern flat terminal interface with full mouse support and customizable Catppuccin-based themes.
 
 ## Installation
 
@@ -18,7 +30,7 @@ A sleek, Neovim-inspired Spotify client for the terminal, built with Python and 
 
 - Python 3.10+
 - A Spotify Premium account (required for DRM playback via the daemon)
-- `spotifyd` binary (included in `src/network/` or installable separately)
+- System clipboard tool (`xclip`, `wl-copy`, or `pbcopy`) for easy authorization.
 
 ### Setup
 
@@ -39,45 +51,47 @@ A sleek, Neovim-inspired Spotify client for the terminal, built with Python and 
    ```bash
    python app.py
    ```
-   The app will automatically guide you through the setup process on your first launch. You will need your Spotify API [Client ID and Secret](https://developer.spotify.com/dashboard).
+   On first launch, the app will guide you through the **Setup Wizard**. You will need your Spotify API [Client ID and Secret](https://developer.spotify.com/dashboard).
 
 ## Usage
 
-Start the application:
-```bash
-python app.py
-```
+### Modes
+- **NORMAL**: Default mode for navigation.
+- **LEADER**: Triggered by `space`. Waiting for a command.
+- **SEARCH**: Active during Telescope search. Includes its own `INSERT` mode for typing.
 
 ### Keybindings
 
 | Key | Action |
 | --- | --- |
 | `space` | **Leader Key** - Opens the action menu |
+| `space` `space` | Open **Telescope Search** |
 | `j` / `k` | Navigate down / up |
-| `h` / `l` | Navigate between panels |
+| `h` / `l` | Navigate between panels (Sidebar/Results/Preview) |
+| `H` / `L` | Switch Category Tabs (in Telescope) |
+| `i` / `a` | Enter **Insert Mode** in search bars |
 | `enter` | Select / Play track |
-| `esc` | Close modals / Cancel leader mode |
+| `esc` | Return to Normal mode / Close modals |
 
-### Leader Actions
+### Leader Actions (`space` + Key)
 
-After pressing `space`, you can use the following:
 - `p`: Play / Pause
 - `n`: Next track
 - `b`: Previous track
 - `t`: Theme selector
 - `e`: Toggle sidebar
+- `Q`: Logout (Wipe session and credentials)
 - `:`: Open command prompt
 
 ## Configuration
 
-The application is configured using Lua. Files are located in the `lua/` directory:
+The application is configured using Lua in the `lua/` directory.
 
-- `lua/init.lua`: Main entry point.
-- `lua/keymaps.lua`: Define your leader mappings and navigation keys.
-- `lua/theme.lua`: Customize colors and UI styles.
-- `lua/audio.lua`: Configure playback backends and bitrates.
+- `lua/init.lua`: Main entry point (enable auto-play, set themes).
+- `lua/keymaps.lua`: Define custom leader mappings and navigation keys.
+- `lua/theme.lua`: Customize UI colors.
 
-See [Configuration Documentation](docs/configuration.md) for more details.
+See [Configuration Documentation](docs/configuration.md) for full details.
 
 ## License
 
