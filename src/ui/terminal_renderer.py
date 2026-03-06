@@ -16,6 +16,7 @@ from src.ui.components.sidebar import SidebarPanels
 from src.ui.components.track_table import TrackList
 from src.ui.components.status_bar import StatusBar
 from src.ui.modals.which_key import WhichKeyPopup
+from src.ui.components.notification import CustomNotification
 
 class TerminalRenderer(App):
     CSS_PATH = "../../styles/main.tcss"
@@ -35,13 +36,19 @@ class TerminalRenderer(App):
         self.leader_mode = False
         self.leader_timer = None
 
+    def notify(self, message: str, severity: str = "information", timeout: float = 3.0):
+        # We are replacing the default notify with our custom widget
+        notification = CustomNotification(message, severity=severity)
+        self.mount(notification)
+        notification.styles.display = "block"
+        notification.add_class("show")
+        
     def on_mount(self) -> None:
         self.title = "Spotify TUI"
         
-        if not self.store.get("is_authenticated"):
-            self.notify(f"Auth error: {self.store.get('auth_error')}", severity="error")
-            return
-
+        # Proactively check for an active device on startup
+        self.set_timer(0.1, self.ensure_active_device)
+        
         self.refresh_data()
         
         # Auto-load the recently played tracks as the default view
@@ -55,6 +62,16 @@ class TerminalRenderer(App):
         self.update_now_playing()
         self.set_interval(5.0, self.update_now_playing)
         self.set_interval(60.0, self.check_authentication) # Proactive auth check
+
+    def ensure_active_device(self):
+        try:
+            playback = self.network.get_current_playback()
+            if not playback or not playback.get('device'):
+                self.notify("No active device found. Activating TUI player...", severity="information")
+                self.switch_to_local_player(force=True)
+        except Exception:
+            # This can fail if auth is expired, which `check_authentication` will handle.
+            pass
 
     def check_authentication(self):
         if not self.network.is_authenticated():
@@ -78,10 +95,15 @@ class TerminalRenderer(App):
         except Exception as e:
             self.notify(f"Spotify API Error: {e}", severity="error")
 
-    def switch_to_local_player(self):
+    def switch_to_local_player(self, force=False):
         try:
             devices_data = self.network.get_devices()
             if not devices_data or not devices_data.get('devices'):
+                return
+            
+            # If not forcing, only switch if there's no active device.
+            is_active = any(d.get('is_active') for d in devices_data['devices'])
+            if not force and is_active:
                 return
                 
             for device in devices_data['devices']:
@@ -90,7 +112,16 @@ class TerminalRenderer(App):
                     self.store.set("preferred_device_name", device['name'])
                     self.network.transfer_playback(device['id'], force_play=False)
                     self.notify(f"Auto-switched to local output: {device['name']}")
-                    break
+                    return # Found our preferred device
+
+            # If TUI player not found, activate the first available one
+            if force and devices_data['devices']:
+                first_device = devices_data['devices'][0]
+                self.store.set("preferred_device_id", first_device['id'])
+                self.store.set("preferred_device_name", first_device['name'])
+                self.network.transfer_playback(first_device['id'], force_play=False)
+                self.notify(f"Activated first available device: {first_device['name']}")
+
         except Exception:
             pass
 

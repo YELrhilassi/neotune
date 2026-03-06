@@ -298,3 +298,32 @@ TelescopePrompt {
 #telescope-preview-tracks:focus {
     border: none;
 }
+
+.notification {
+    dock: top;
+    width: 100%;
+    text-align: center;
+    padding: 1;
+    display: none;
+    transition: offset 0.3s ease-in-out;
+    offset: 0 -100%;
+}
+.notification.show {
+    display: block;
+    offset: 0 0;
+}
+
+.notification.information {
+    background: #89b4fa; /* Blue */
+    color: #1e1e2e;
+}
+
+.notification.warning {
+    background: #fab387; /* Orange */
+    color: #1e1e2e;
+}
+
+.notification.error {
+    background: #f38ba8; /* Red */
+    color: #1e1e2e;
+}
