@@ -97,8 +97,10 @@ class LocalPlayer:
                     stdout=log_file, 
                     stderr=log_file
                 )
+            
             # Register both normal exit and crash/termination exit
             atexit.register(self.stop)
+            
             # Give the daemon 2 seconds to authenticate and appear in the device list
             time.sleep(2)
         except Exception:
