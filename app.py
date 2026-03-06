@@ -80,13 +80,17 @@ if __name__ == "__main__":
             
     # 3. Check if Local Player (spotifyd) Authenticated
     player = Container.resolve(LocalPlayer)
-    if player and not player.is_authenticated():
-        wizard = WizardApp(PlayerAuthScreen())
-        result = wizard.run()
-        if result != "player_auth_complete":
-            # Optional: Allow continuing without local player if user cancels?
-            # For now, we enforce it for high-quality playback.
-            pass
+    if player:
+        # Aggressive cleanup of any ghost daemons from previous crashed sessions
+        player.stop_existing()
+        
+        if not player.is_authenticated():
+            wizard = WizardApp(PlayerAuthScreen())
+            result = wizard.run()
+            if result != "player_auth_complete":
+                # Optional: Allow continuing without local player if user cancels?
+                # For now, we enforce it for high-quality playback.
+                pass
 
     # 4. Start Local Player if authenticated
     if player and player.is_authenticated():

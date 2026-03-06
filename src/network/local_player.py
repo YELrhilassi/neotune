@@ -37,12 +37,24 @@ class LocalPlayer:
 
     def stop_existing(self):
         """Kills any existing spotifyd processes to avoid duplicates or orphans."""
-        for proc in psutil.process_iter(['name', 'pid']):
+        for proc in psutil.process_iter(['name', 'pid', 'cmdline']):
             try:
-                if proc.info['name'] == 'spotifyd' and proc.info['pid'] != os.getpid():
+                # Be aggressive: if it's named spotifyd, kill it.
+                if proc.info['name'] == 'spotifyd':
+                    proc.kill()
+                # Also check cmdline just in case it was renamed or run via bash script
+                elif proc.info['cmdline'] and 'spotifyd' in proc.info['cmdline'][0]:
                     proc.kill()
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
+                
+        # Clean up any potential lock files or stale sockets in the cache dir
+        try:
+            for item in os.listdir(self.cache_dir):
+                if item.endswith(".sock") or item.endswith(".lock"):
+                    os.remove(os.path.join(self.cache_dir, item))
+        except Exception:
+            pass
 
     def start(self, audio_config=None):
         if not os.path.exists(self.binary_path):
