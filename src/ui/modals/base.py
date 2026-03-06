@@ -13,31 +13,13 @@ class BaseModal(ModalScreen[ResultType]):
     ]
     
     def on_key(self, event: events.Key):
-        prefs = Container.resolve(UserPreferences)
-        nav = prefs.nav_bindings
-        char = event.character
+        # Allow escape to always dismiss
+        if event.key == "escape":
+            self.dismiss()
+            event.prevent_default()
+            return
         
-        in_input = self.focused and self.focused.__class__.__name__ == "Input"
-        
-        if not in_input and char:
-            if char == nav.get("down"):
-                if hasattr(self.focused, "action_cursor_down"):
-                    self.focused.action_cursor_down()
-                event.prevent_default()
-                return
-            elif char == nav.get("up"):
-                if hasattr(self.focused, "action_cursor_up"):
-                    self.focused.action_cursor_up()
-                event.prevent_default()
-                return
-            elif char == nav.get("page_down"):
-                if hasattr(self.focused, "action_page_down"):
-                    self.focused.action_page_down()
-                event.prevent_default()
-                return
-            elif char == nav.get("page_up"):
-                if hasattr(self.focused, "action_page_up"):
-                    self.focused.action_page_up()
-                event.prevent_default()
-                return
+        # We removed the global j/k/h/l translation here to prevent double handling.
+        # Subclasses or widgets should handle their own navigation.
+
 

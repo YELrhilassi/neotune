@@ -128,17 +128,17 @@ class TelescopePrompt(BaseModal[str]):
             if item_type == "track":
                 artists = ", ".join([a['name'] for a in data.get('artists', []) if a.get('name')])
                 clean_name = strip_icons(data.get('name', 'Unknown Track'))
-                self.results_data.append({"type": "track", "data": data})
+                self.results_data.append({"type": "track", "data": data, "uri": data.get("uri")})
                 self.results_list.add_option(f"{Icons.TRACK} {clean_name} - {strip_icons(artists)}")
             elif item_type == "album":
                 artists = ", ".join([a['name'] for a in data.get('artists', []) if a.get('name')])
                 clean_name = strip_icons(data.get('name', 'Unknown Album'))
-                self.results_data.append({"type": "album", "data": data})
+                self.results_data.append({"type": "album", "data": data, "uri": data.get("uri")})
                 self.results_list.add_option(f"{Icons.ALBUM} {clean_name} - {strip_icons(artists)}")
             elif item_type == "playlist":
                 clean_name = strip_icons(data.get('name', 'Unknown Playlist'))
                 owner = data.get('owner', {}).get('display_name', 'Unknown')
-                self.results_data.append({"type": "playlist", "data": data})
+                self.results_data.append({"type": "playlist", "data": data, "uri": data.get("uri")})
                 self.results_list.add_option(f"{Icons.PLAYLIST} {clean_name} - {strip_icons(owner)}")
 
     def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted):
@@ -205,7 +205,7 @@ class TelescopePrompt(BaseModal[str]):
             info += f"[#a6e3a1]{Icons.ARTIST} Owner:[/] {owner}\n"
             info += f"[#cba6f7]{Icons.TRACK} Tracks:[/] {total_tracks}\n"
             if desc:
-                info += f"\n[dim italic]{escape(desc)}[/dim]\n"
+                info += f"\n[dim italic]{escape(desc)}[/]\n"
             
             self.preview_info.update(info)
             self.preview_tracks.display = True
@@ -272,19 +272,22 @@ class TelescopePrompt(BaseModal[str]):
                 elif action == "remove":
                     remove_saved_track(uri, self.app)
 
+        uri = item.get("uri")
+        if not uri: return
+
         if item["type"] == "track":
             track_data = item["data"]
             artists = ", ".join([a['name'] for a in track_data.get('artists', [])])
             display_name = f"{strip_icons(track_data['name'])} by {strip_icons(artists)}"
-            self.app.push_screen(TrackMenuPopup(track_data['uri'], display_name), lambda act: generic_action_handler(act, track_data['uri']))
+            self.app.push_screen(TrackMenuPopup(uri, display_name), lambda act: generic_action_handler(act, uri))
             
         elif item["type"] == "album":
             album_data = item["data"]
-            self.app.push_screen(TrackMenuPopup(album_data['uri'], strip_icons(album_data['name'])), lambda act: generic_action_handler(act, album_data['uri']))
+            self.app.push_screen(TrackMenuPopup(uri, strip_icons(album_data['name'])), lambda act: generic_action_handler(act, uri))
 
         elif item["type"] == "playlist":
             playlist_data = item["data"]
-            self.app.push_screen(TrackMenuPopup(playlist_data['uri'], strip_icons(playlist_data['name'])), lambda act: generic_action_handler(act, playlist_data['uri']))
+            self.app.push_screen(TrackMenuPopup(uri, strip_icons(playlist_data['name'])), lambda act: generic_action_handler(act, uri))
 
     def on_unmount(self):
         try:
@@ -294,16 +297,10 @@ class TelescopePrompt(BaseModal[str]):
             pass
 
     def on_key(self, event: events.Key):
-        # We explicitly manage h, j, k, l, U, D
-        
         # If input is focused, typing normal chars should work.
         if self.input.has_focus:
             if event.key == "down":
                 self.results_list.focus()
-                event.prevent_default()
-            elif event.key == "enter":
-                if self.results_list.highlighted is not None:
-                    self._handle_selection(self.results_list.highlighted)
                 event.prevent_default()
             return
 
@@ -312,38 +309,37 @@ class TelescopePrompt(BaseModal[str]):
         if focused_widget is None:
             return
 
-        if event.character == "j" or event.key == "down":
+        # VIM Navigation (Only use character checks for j/k/h/l to avoid double arrow handling)
+        if event.character == "j":
             if hasattr(focused_widget, "action_cursor_down"):
                 focused_widget.action_cursor_down()
             event.prevent_default()
-        elif event.character == "k" or event.key == "up":
+        elif event.character == "k":
             if hasattr(focused_widget, "action_cursor_up"):
                 focused_widget.action_cursor_up()
             else:
                 self.input.focus()
             event.prevent_default()
-        elif event.character == "U" or event.key == "page_up":
-            if hasattr(focused_widget, "action_page_up"):
-                focused_widget.action_page_up()
-            event.prevent_default()
-        elif event.character == "D" or event.key == "page_down":
-            if hasattr(focused_widget, "action_page_down"):
-                focused_widget.action_page_down()
-            event.prevent_default()
-        elif event.character == "h" or event.key == "left":
+        elif event.character == "h":
             if focused_widget.id == "telescope-preview-tracks":
                 self.results_list.focus()
             else:
                 self.input.focus()
             event.prevent_default()
-        elif event.character == "l" or event.key == "right":
+        elif event.character == "l":
             if focused_widget.id == "telescope-results" and self.preview_tracks.display:
                 self.preview_tracks.focus()
             event.prevent_default()
-        elif event.key == "enter":
-            if focused_widget.id == "telescope-results" and self.results_list.highlighted is not None:
-                self._handle_selection(self.results_list.highlighted)
+        
+        # Pagination (U/D)
+        elif event.character == "U":
+            if hasattr(focused_widget, "action_page_up"):
+                focused_widget.action_page_up()
+            event.prevent_default()
+        elif event.character == "D":
+            if hasattr(focused_widget, "action_page_down"):
+                focused_widget.action_page_down()
             event.prevent_default()
         
-        # We don't call super().on_key(event) or prevent default for things we don't recognize
-        # like space, enabling the App/TerminalRenderer to handle core commands.
+        # We REMOVED manual enter, up, down, left, right handling here 
+        # to allow the focused widget (OptionList) to handle them natively without double-moving.

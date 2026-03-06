@@ -126,7 +126,7 @@ class SpotifyNetwork:
         
         # Decide if we use 'uris' (for tracks) or 'context_uri' (for albums/playlists)
         params = {"device_id": device_id}
-        if "track" in track_uri:
+        if ":track:" in track_uri:
             params["uris"] = [track_uri]
         else:
             params["context_uri"] = track_uri
