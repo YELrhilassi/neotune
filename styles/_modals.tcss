@@ -5,12 +5,33 @@ DeviceSelector, AudioConfigSelector, CommandPopup, SearchPopup, TrackMenuPopup, 
 }
 
 /* Shared Modal Card style */
-#confirmation-dialog, #device-dialog, #audio-config-dialog, #command-dialog, #track-menu-dialog {
+#confirmation-dialog, #command-dialog, #track-menu-dialog {
     width: 60;
     height: auto;
     border: round $accent;
     background: $surface;
     padding: 1 2;
+}
+
+#device-dialog, #audio-config-dialog {
+    width: auto;
+    height: auto;
+    border: round $accent;
+    border-title-color: $primary;
+    border-subtitle-color: $text;
+    background: $surface;
+    padding: 0 1;
+}
+
+#device-list, #backend-list {
+    width: auto;
+    height: auto;
+    border: none;
+    background: transparent;
+}
+
+#device-list:focus, #backend-list:focus {
+    border: none;
 }
 
 #confirmation-dialog {

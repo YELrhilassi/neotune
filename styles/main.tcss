@@ -19,39 +19,6 @@ $border-hover: #cba6f7;
 $border-active: #89b4fa;
 
 /* ==========================================================================
-   THEME OVERRIDES
-   ========================================================================== */
-.theme-nord {
-    $bg: #2e3440;
-    $surface: #3b4252;
-    $overlay: #434c5e;
-    $fg: #eceff4;
-    $accent: #88c0d0;
-    $primary: #81a1c1;
-    $success: #a3be8c;
-}
-
-.theme-dracula {
-    $bg: #282a36;
-    $surface: #44475a;
-    $overlay: #6272a4;
-    $fg: #f8f8f2;
-    $accent: #bd93f9;
-    $primary: #8be9fd;
-    $success: #50fa7b;
-}
-
-.theme-tokyo-night {
-    $bg: #1a1b26;
-    $surface: #16161e;
-    $overlay: #24283b;
-    $fg: #a9b1d6;
-    $accent: #bb9af7;
-    $primary: #7aa2f7;
-    $success: #9ece6a;
-}
-
-/* ==========================================================================
    BASE STYLES
    ========================================================================== */
 Screen {
@@ -247,12 +214,33 @@ DeviceSelector, AudioConfigSelector, CommandPopup, SearchPopup, TrackMenuPopup, 
     background: rgba(17, 17, 27, 0.85);
 }
 
-#confirmation-dialog, #device-dialog, #audio-config-dialog, #command-dialog, #track-menu-dialog {
+#confirmation-dialog, #command-dialog, #track-menu-dialog {
     width: 60;
     height: auto;
     border: round $accent;
     background: $surface;
     padding: 1 2;
+}
+
+#device-dialog, #audio-config-dialog {
+    width: auto;
+    height: auto;
+    border: round $accent;
+    border-title-color: $primary;
+    border-subtitle-color: $fg;
+    background: $surface;
+    padding: 0 1;
+}
+
+#device-list, #backend-list {
+    width: auto;
+    height: auto;
+    border: none;
+    background: transparent;
+}
+
+#device-list:focus, #backend-list:focus {
+    border: none;
 }
 
 #confirmation-dialog {

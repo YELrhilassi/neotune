@@ -1,6 +1,6 @@
 from textual.app import ComposeResult
-from textual.widgets import Label, OptionList
-from textual.containers import Middle
+from textual.widgets import OptionList
+from textual.containers import Vertical
 from src.ui.modals.base import BaseModal
 
 class DeviceSelector(BaseModal[str]):
@@ -10,8 +10,7 @@ class DeviceSelector(BaseModal[str]):
         self.active_device_id = active_device_id
 
     def compose(self) -> ComposeResult:
-        with Middle(id="device-dialog"):
-            yield Label("Select Audio Output", id="device-title")
+        with Vertical(id="device-dialog"):
             options = []
             for d in self.devices:
                 name = d['name']
@@ -21,6 +20,14 @@ class DeviceSelector(BaseModal[str]):
                     name = f"[ ] {name}"
                 options.append(name)
             yield OptionList(*options, id="device-list")
+
+    def on_mount(self):
+        try:
+            dialog = self.query_one("#device-dialog")
+            dialog.border_title = "Select Audio Output"
+            dialog.border_subtitle = "esc to close"
+        except Exception:
+            pass
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected):
         selected_device = self.devices[event.option_index]
@@ -33,8 +40,7 @@ class AudioConfigSelector(BaseModal[dict]):
         self.backends = ["pulseaudio", "alsa", "rodio", "pipe"]
 
     def compose(self) -> ComposeResult:
-        with Middle(id="audio-config-dialog"):
-            yield Label("Select Audio Backend", id="audio-config-title")
+        with Vertical(id="audio-config-dialog"):
             options = []
             for b in self.backends:
                 name = b
@@ -44,6 +50,14 @@ class AudioConfigSelector(BaseModal[dict]):
                     name = f"[ ] {name}"
                 options.append(name)
             yield OptionList(*options, id="backend-list")
+
+    def on_mount(self):
+        try:
+            dialog = self.query_one("#audio-config-dialog")
+            dialog.border_title = "Audio Backend"
+            dialog.border_subtitle = "esc to close"
+        except Exception:
+            pass
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected):
         new_backend = self.backends[event.option_index]

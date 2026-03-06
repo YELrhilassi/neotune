@@ -40,8 +40,8 @@ class UserPreferences:
         }
         
         self.audio_config = {
-            "backend": None,
-            "device": None,
+            "backend": "pulseaudio",
+            "device": "default",
             "bitrate": "320"
         }
         
