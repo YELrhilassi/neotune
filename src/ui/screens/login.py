@@ -2,7 +2,7 @@ import webbrowser
 from textual.app import ComposeResult
 from textual.screen import Screen
 from textual.widgets import Input, Label, Button, Static, TextArea
-from textual.containers import Vertical, Horizontal, Center
+from textual.containers import Vertical, Horizontal
 from src.core.di import Container
 from src.network.spotify_network import SpotifyNetwork
 from src.hooks.useCopyToClipboard import useCopyToClipboard
@@ -12,27 +12,26 @@ class LoginScreen(Screen):
         network = Container.resolve(SpotifyNetwork)
         self.auth_url = network.get_auth_url()
         
-        with Center():
-            with Vertical(id="setup-mini-card"):
-                yield Label("󰓇 SPOTIFY AUTHORIZATION", id="setup-title-minimal")
+        with Vertical(id="setup-mini-card"):
+            yield Label("󰓇 SPOTIFY AUTHORIZATION", id="setup-title-minimal")
 
-                yield Static(
-                    "1. Click 'Open Link' to authorize in your browser.\n"
-                    "2. If it fails, click 'Copy Link' and paste it manually.\n"
-                    "3. Paste the redirected URL below to finish.",
-                    id="setup-simple-help"
-                )
-                
-                with Horizontal(id="login-mini-actions"):
-                    yield Button("Open Link", variant="primary", id="open-browser-btn", classes="small-btn")
-                    yield Button("Copy Link", variant="default", id="copy-link-btn", classes="small-btn")
-                
-                yield Label("Redirect URL", classes="minimal-section-title")
-                yield Input(placeholder="Paste URL here...", id="redirect_url_input", classes="minimal-input")
+            yield Static(
+                "1. Click 'Open Link' to authorize in your browser.\n"
+                "2. If it fails, click 'Copy Link' and paste it manually.\n"
+                "3. Paste the redirected URL below to finish.",
+                id="setup-simple-help"
+            )
+            
+            with Horizontal(id="login-mini-actions"):
+                yield Button("Open Link", variant="primary", id="open-browser-btn", classes="small-btn")
+                yield Button("Copy Link", variant="default", id="copy-link-btn", classes="small-btn")
+            
+            yield Label("Redirect URL", classes="minimal-section-title")
+            yield Input(placeholder="Paste URL here...", id="redirect_url_input", classes="minimal-input")
 
-                with Horizontal(id="setup-mini-actions"):
-                    yield Button("Login", variant="success", id="login-btn", classes="small-btn")
-                    yield Button("Back", variant="default", id="back-btn", classes="small-btn")
+            with Horizontal(id="setup-mini-actions"):
+                yield Button("Login", variant="success", id="login-btn", classes="small-btn")
+                yield Button("Back", variant="default", id="back-btn", classes="small-btn")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "open-browser-btn":
