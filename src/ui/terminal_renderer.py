@@ -21,7 +21,6 @@ from src.ui.components.sidebar import SidebarPanels
 from src.ui.components.track_table import TrackList
 from src.ui.components.status_bar import StatusBar
 from src.ui.modals.which_key import WhichKeyPopup
-from src.ui.components.notification import CustomNotification
 
 class TerminalRenderer(App):
     CSS_PATH = "../../styles/main.tcss"
@@ -41,12 +40,16 @@ class TerminalRenderer(App):
         self.leader_mode = False
         self.leader_timer = None
 
-    def notify(self, message: str, severity: str = "information", timeout: float = 3.0):
-        notification = CustomNotification(message, severity=severity)
-        self.mount(notification)
-        notification.styles.display = "block"
-        notification.add_class("show")
-        
+    def notify(self, message: str, *, title: str = "", severity: str = "information", timeout: float = 3.0, **kwargs):
+        # Update Status Bar notification
+        try:
+            status_bar = self.query_one(StatusBar)
+            status_bar.notification = message
+        except Exception:
+            pass
+        # Fallback to default toast
+        super().notify(message, title=title, severity=severity, timeout=timeout)
+
     def on_mount(self) -> None:
         self.title = "Spotify TUI"
         
@@ -83,15 +86,21 @@ class TerminalRenderer(App):
             self.local_player.stop()
 
     def safe_network_call(self, func, *args, **kwargs):
+        self.log(f"[DEBUG] safe_network_call: attempting to call {func}")
         if not self.network:
+            self.log("[DEBUG] safe_network_call: network is None")
             return None
         try:
-            return func(*args, **kwargs)
+            result = func(*args, **kwargs)
+            self.log(f"[DEBUG] safe_network_call: call successful, result: {result}")
+            return result
         except SpotifyOauthError as e:
+            self.log(f"[DEBUG] safe_network_call: SpotifyOauthError: {e}")
             self.notify(f"Authentication error: {e}. Attempting re-authentication.", severity="error")
             self.check_authentication()
             return None
         except Exception as e:
+            self.log(f"[DEBUG] safe_network_call: Exception: {e}")
             self.notify(f"Spotify API Error: {e}", severity="error")
             return None
 
@@ -161,6 +170,11 @@ class TerminalRenderer(App):
             elif event.key == "right" and self.is_screen_active("WhichKeyPopup"):
                 self.screen.action_next_page()
             elif char:
+                # If we were in leader mode and hit '/', update mode to SEARCH
+                if char == "/":
+                    try:
+                        self.query_one(StatusBar).mode = "SEARCH"
+                    except Exception: pass
                 self.handle_leader_command(char)
             else:
                 self.cancel_leader() # Cancel on any other unhandled non-character key (like F1)
@@ -169,6 +183,9 @@ class TerminalRenderer(App):
             
         if char == leader_key and not in_input:
             self.leader_mode = True
+            try:
+                self.query_one(StatusBar).mode = "LEADER"
+            except Exception: pass
             
             # Optionally show WhichKeyPopup depending on user preferences
             if self.user_prefs.show_which_key:
@@ -178,6 +195,12 @@ class TerminalRenderer(App):
 
     def cancel_leader(self):
         self.leader_mode = False
+        try:
+            # Revert to SEARCH if search is still active, else NORMAL
+            mode = "SEARCH" if self.is_screen_active("TelescopePrompt") else "NORMAL"
+            self.query_one(StatusBar).mode = mode
+        except Exception: pass
+        
         if self.is_screen_active("WhichKeyPopup"):
             self.pop_screen()
 

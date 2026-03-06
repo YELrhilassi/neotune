@@ -286,16 +286,20 @@ class TelescopePrompt(BaseModal[str]):
             playlist_data = item["data"]
             self.app.push_screen(TrackMenuPopup(playlist_data['uri'], strip_icons(playlist_data['name'])), lambda act: generic_action_handler(act, playlist_data['uri']))
 
+    def on_unmount(self):
+        try:
+            from src.ui.components.status_bar import StatusBar
+            self.app.query_one(StatusBar).mode = "NORMAL"
+        except Exception:
+            pass
+
     def on_key(self, event: events.Key):
         # We explicitly manage h, j, k, l, U, D
         
         # If input is focused, typing normal chars should work.
         if self.input.has_focus:
             if event.key == "down":
-                self.results_list.action_cursor_down()
-                event.prevent_default()
-            elif event.key == "up":
-                self.results_list.action_cursor_up()
+                self.results_list.focus()
                 event.prevent_default()
             elif event.key == "enter":
                 if self.results_list.highlighted is not None:
@@ -315,6 +319,8 @@ class TelescopePrompt(BaseModal[str]):
         elif event.character == "k" or event.key == "up":
             if hasattr(focused_widget, "action_cursor_up"):
                 focused_widget.action_cursor_up()
+            else:
+                self.input.focus()
             event.prevent_default()
         elif event.character == "U" or event.key == "page_up":
             if hasattr(focused_widget, "action_page_up"):
@@ -324,17 +330,15 @@ class TelescopePrompt(BaseModal[str]):
             if hasattr(focused_widget, "action_page_down"):
                 focused_widget.action_page_down()
             event.prevent_default()
-        elif event.character == "h":
+        elif event.character == "h" or event.key == "left":
             if focused_widget.id == "telescope-preview-tracks":
                 self.results_list.focus()
             else:
                 self.input.focus()
             event.prevent_default()
-        elif event.character == "l":
+        elif event.character == "l" or event.key == "right":
             if focused_widget.id == "telescope-results" and self.preview_tracks.display:
                 self.preview_tracks.focus()
-            elif focused_widget.id == "telescope-input":
-                self.results_list.focus()
             event.prevent_default()
         elif event.key == "enter":
             if focused_widget.id == "telescope-results" and self.results_list.highlighted is not None:

@@ -13,8 +13,8 @@ Screen {
 #status-bar {
     height: 1;
     dock: bottom;
-    background: #11111b; /* Mantle/Crust */
-    color: #a6adc8;
+    background: #1e1e2e;
+    color: #cdd6f4;
     padding: 0;
 }
 
@@ -23,14 +23,74 @@ Screen {
     width: 100%;
 }
 
+#status-mode {
+    background: #89b4fa;
+    color: #1e1e2e;
+    text-style: bold;
+}
+
+#status-mode.normal {
+    background: #89b4fa; /* Blue */
+}
+
+#status-mode.leader {
+    background: #fab387; /* Orange */
+}
+
+#status-mode.search {
+    background: #a6e3a1; /* Green */
+}
+
+#status-mode-sep {
+    color: #89b4fa;
+    background: #313244;
+}
+
+#status-mode-sep.normal {
+    color: #89b4fa;
+}
+
+#status-mode-sep.leader {
+    color: #fab387;
+}
+
+#status-mode-sep.search {
+    color: #a6e3a1;
+}
+
 #status-left {
-    content-align: left middle;
+    background: #313244;
+    color: #cdd6f4;
+    width: auto;
+}
+
+#status-middle {
+    background: #181825;
     width: 1fr;
 }
 
-#status-right {
-    content-align: right middle;
+#status-notif-sep {
+    background: #181825;
+    color: #313244;
+}
+
+#status-notification {
+    background: #313244;
+    color: #f38ba8;
     width: auto;
+    max-width: 35;
+}
+
+#status-right-sep {
+    background: #313244;
+    color: #89b4fa;
+}
+
+#status-right {
+    background: #89b4fa;
+    color: #1e1e2e;
+    width: auto;
+    text-style: bold;
 }
 
 #now-playing {
@@ -299,31 +359,29 @@ TelescopePrompt {
     border: none;
 }
 
-.notification {
-    dock: top;
-    width: 100%;
-    text-align: center;
-    padding: 1;
-    display: none;
-    transition: offset 0.3s ease-in-out;
-    offset: 0 -100%;
-}
-.notification.show {
-    display: block;
-    offset: 0 0;
+/* Built-in Textual Notifications Overrides */
+ToastRack {
+    align: center top;
 }
 
-.notification.information {
-    background: #89b4fa; /* Blue */
-    color: #1e1e2e;
+Toast {
+    width: auto;
+    min-width: 30;
+    max-width: 60;
+    margin-top: 1;
+    border: round #cba6f7;
+    background: #1e1e2e;
+    color: #cdd6f4;
 }
 
-.notification.warning {
-    background: #fab387; /* Orange */
-    color: #1e1e2e;
+Toast.-information {
+    border: round #89b4fa;
 }
 
-.notification.error {
-    background: #f38ba8; /* Red */
-    color: #1e1e2e;
+Toast.-warning {
+    border: round #fab387;
+}
+
+Toast.-error {
+    border: round #f38ba8;
 }
