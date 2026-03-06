@@ -1,0 +1,235 @@
+/* Omarchy / Omakub Inspired Sleek Aesthetic */
+Screen {
+    layout: vertical;
+    background: #1e1e2e; /* Catppuccin Mocha Base */
+    color: #cdd6f4;      /* Text */
+}
+
+/* Hide Visual Scrollbars */
+* {
+    scrollbar-size: 0 0;
+}
+
+#status-bar {
+    height: 1;
+    dock: bottom;
+    background: #11111b; /* Mantle/Crust */
+    color: #a6adc8;
+    padding: 0;
+}
+
+#status-container {
+    layout: horizontal;
+    width: 100%;
+}
+
+#status-left {
+    content-align: left middle;
+    width: 1fr;
+}
+
+#status-right {
+    content-align: right middle;
+    width: auto;
+}
+
+#now-playing {
+    height: auto;
+    dock: top;
+    background: #181825;
+    border: round #cba6f7; /* Mauve Accent Border around the whole card */
+    margin: 1 2 0 2;
+    padding: 1 2;
+}
+
+#np-container {
+    height: auto;
+    layout: horizontal;
+    align: left middle;
+}
+
+#np-info {
+    width: 1fr;
+    height: auto;
+    content-align: left middle;
+}
+
+#np-controls {
+    width: auto;
+    height: auto;
+    content-align: right middle;
+    align: right middle;
+}
+
+#np-track-name, #np-artist-name {
+    height: auto;
+}
+
+#np-shuffle-icon, #np-repeat-icon {
+    margin-left: 1;
+}
+
+#main-container {
+    height: 1fr;
+    layout: horizontal;
+    background: #1e1e2e;
+}
+
+/* Sidebar and TrackList Panels */
+#sidebar {
+    width: 35;
+    height: 1fr;
+    dock: left;
+    background: #1e1e2e;
+    border: round #313244;
+}
+
+#sidebar:focus {
+    border: round #cba6f7;
+}
+
+#track-list {
+    height: 1fr;
+    width: 1fr;
+    background: #1e1e2e;
+    border: round #313244;
+}
+
+#track-list:focus {
+    border: round #89b4fa; /* Blue Accent */
+}
+
+/* Tree / List Styling */
+Tree {
+    background: #1e1e2e;
+    color: #cdd6f4;
+    padding: 1;
+}
+
+Tree > .tree--cursor {
+    background: #313244;
+    color: #89b4fa;
+    text-style: bold;
+}
+
+/* DataTable Styling */
+DataTable {
+    background: #1e1e2e;
+}
+
+DataTable > .datatable--header {
+    background: #1e1e2e;
+    color: #bac2de;
+    text-style: bold;
+    border-bottom: solid #313244;
+}
+
+DataTable > .datatable--cursor {
+    background: #cba6f7;
+    color: #11111b;
+    text-style: bold;
+}
+
+/* Modals */
+DeviceSelector, AudioConfigSelector, CommandPopup, SearchPopup, TrackMenuPopup {
+    align: center middle;
+    background: rgba(17, 17, 27, 0.85); /* Dark transparent */
+}
+
+WhichKeyPopup {
+    align: right bottom;
+    background: transparent;
+}
+
+#which-key-dialog {
+    width: auto;
+    height: auto;
+    border: round #cba6f7;
+    background: rgba(24, 24, 37, 0.95);
+    padding: 1 2;
+    margin: 1 2;
+}
+
+#which-key-title {
+    content-align: center middle;
+    margin-bottom: 1;
+}
+
+#which-key-grid {
+    layout: grid;
+    grid-size: 2;
+    grid-columns: 1fr 2fr;
+    grid-gutter: 0 2;
+    height: auto;
+    width: auto;
+}
+
+#device-dialog, #audio-config-dialog, #command-dialog, #track-menu-dialog {
+    width: 60;
+    height: auto;
+    border: round #f5c2e7; /* Pink */
+    background: #181825;
+    padding: 1 2;
+}
+
+#search-container {
+    width: 80%;
+    height: 80%;
+    border: round #89b4fa; /* Blue */
+    background: #181825;
+    padding: 1;
+}
+
+#search-input {
+    dock: top;
+    margin-bottom: 1;
+    background: #1e1e2e;
+    color: #cdd6f4;
+    border: round #313244;
+}
+
+#search-input:focus {
+    border: round #89b4fa;
+}
+
+#search-body {
+    height: 1fr;
+}
+
+#search-results {
+    width: 60%;
+    height: 1fr;
+    border: none;
+    border-right: solid #313244;
+    background: transparent;
+}
+
+#search-results:focus {
+    border-right: solid #a6e3a1;
+}
+
+#search-info {
+    width: 40%;
+    height: 1fr;
+    padding: 1 2;
+    content-align: left top;
+}
+
+OptionList {
+    background: #181825;
+    border: round #313244;
+}
+
+OptionList:focus {
+    border: round #a6e3a1;
+}
+
+OptionList > .option-list--option {
+    padding: 0 1;
+}
+
+OptionList > .option-list--option-highlighted {
+    background: #313244;
+    text-style: bold;
+    color: #a6e3a1;
+}

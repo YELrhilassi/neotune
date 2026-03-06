@@ -1,0 +1,1 @@
+spotify_tui.set_theme("dracula")
