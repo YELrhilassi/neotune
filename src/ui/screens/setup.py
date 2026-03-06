@@ -1,7 +1,7 @@
 from textual.app import ComposeResult
 from textual.screen import Screen
 from textual.widgets import Input, Label, Button, Static, Header, Footer
-from textual.containers import Vertical, Horizontal, Center
+from textual.containers import Vertical, Horizontal, Center, Container as TextualContainer
 from src.core.di import Container
 from src.config.client_config import ClientConfiguration
 
@@ -9,35 +9,34 @@ class SetupScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header()
         with Center():
-            with Vertical(id="setup-form"):
-                yield Label("Spotify TUI Configuration", id="setup-title")
-                yield Static(
-                    "Welcome! Let's get you connected to Spotify.\n\n"
-                    "1. [bold]Create App:[/] Visit [blue]developer.spotify.com/dashboard[/]\n"
-                    "2. [bold]Credentials:[/] Paste your [italic]Client ID[/] and [italic]Secret[/] below.\n"
-                    "3. [bold]Redirect URI:[/] Ensure [italic]http://127.0.0.1:8080[/] is whitelisted in your app settings.\n"
-                    "4. [bold]spotifyd:[/] Provide your username/password for high-quality playback daemon support.",
-                    id="setup-help"
-                )
+            with Vertical(id="setup-card"):
+                yield Label("󰓇 Spotify TUI Setup", id="setup-title")
                 
-                with Vertical(classes="input-group"):
-                    yield Label("Spotify API Client ID")
-                    yield Input(placeholder="Paste ID...", id="client_id")
+                with Horizontal(id="setup-split"):
+                    with Vertical(id="setup-info"):
+                        yield Label("Instructions", classes="section-title")
+                        yield Static(
+                            "1. Visit [bold #89b4fa]developer.spotify.com[/]\n"
+                            "2. Create a [italic]New App[/].\n"
+                            "3. Copy [bold]Client ID[/] & [bold]Secret[/].\n"
+                            "4. Set Redirect URI to:\n   [italic #a6e3a1]http://127.0.0.1:8080[/]\n\n"
+                            "[dim]spotifyd requires your account credentials for DRM playback.[/dim]",
+                            id="setup-help"
+                        )
                     
-                    yield Label("Spotify API Client Secret")
-                    yield Input(placeholder="Paste Secret...", id="client_secret", password=True)
-                    
-                    yield Label("Redirect URI")
-                    yield Input(value="http://127.0.0.1:8080", id="redirect_uri")
-                
-                with Vertical(classes="input-group"):
-                    yield Label("Spotify Username (for spotifyd)")
-                    yield Input(placeholder="Username...", id="username")
-                    
-                    yield Label("Spotify Password (for spotifyd)")
-                    yield Input(placeholder="Password...", id="password", password=True)
-                
-                with Horizontal(id="setup-buttons"):
+                    with Vertical(id="setup-inputs"):
+                        yield Label("API Credentials", classes="section-title")
+                        with Vertical(classes="input-group"):
+                            yield Input(placeholder="Client ID", id="client_id")
+                            yield Input(placeholder="Client Secret", id="client_secret", password=True)
+                            yield Input(value="http://127.0.0.1:8080", id="redirect_uri")
+                        
+                        yield Label("Spotify Account (Local Player)", classes="section-title")
+                        with Vertical(classes="input-group"):
+                            yield Input(placeholder="Username", id="username")
+                            yield Input(placeholder="Password", id="password", password=True)
+
+                with Horizontal(id="setup-footer"):
                     yield Button("Complete Setup", variant="primary", id="save-btn")
                     yield Button("Quit", variant="error", id="quit-btn")
         yield Footer()

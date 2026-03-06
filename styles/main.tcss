@@ -408,10 +408,10 @@ Toast.-error {
 }
 
 /* Setup Screen */
-#setup-form {
-    width: 60;
+#setup-card {
+    width: 80;
     height: auto;
-    border: round #cba6f7;
+    border: double #cba6f7;
     background: #181825;
     padding: 1 2;
 }
@@ -424,28 +424,56 @@ Toast.-error {
     margin-bottom: 1;
 }
 
-#setup-help {
+#setup-split {
+    height: auto;
+    border-top: solid #313244;
+    border-bottom: solid #313244;
+}
+
+#setup-info {
+    width: 30;
+    height: auto;
+    padding-right: 2;
+    border-right: solid #313244;
+}
+
+#setup-inputs {
+    width: 1fr;
+    height: auto;
+    padding-left: 2;
+}
+
+.section-title {
+    color: #bac2de;
+    text-style: bold italic;
     margin-bottom: 1;
+    margin-top: 1;
+}
+
+#setup-help {
     color: #a6adc8;
 }
 
 .input-group {
-    border: solid #313244;
-    padding: 1;
+    height: auto;
     margin-bottom: 1;
 }
 
-#setup-form Label {
-    margin-top: 1;
-    color: #cdd6f4;
+.input-group Input {
+    margin-bottom: 1;
+    border: round #313244;
 }
 
-#setup-buttons {
-    margin-top: 2;
+.input-group Input:focus {
+    border: round #89b4fa;
+}
+
+#setup-footer {
+    margin-top: 1;
     height: 3;
     align: center middle;
 }
 
-#setup-buttons Button {
+#setup-footer Button {
     margin: 0 1;
 }
