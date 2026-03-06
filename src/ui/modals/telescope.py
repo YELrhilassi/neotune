@@ -2,6 +2,7 @@ from textual.app import ComposeResult
 from textual.widgets import OptionList, Input, Static, Label
 from textual.containers import Horizontal, Vertical
 from textual.binding import Binding
+from textual.markup import escape
 from textual import work, events
 
 from src.ui.modals.base import BaseModal
@@ -204,7 +205,7 @@ class TelescopePrompt(BaseModal[str]):
             info += f"[#a6e3a1]{Icons.ARTIST} Owner:[/] {owner}\n"
             info += f"[#cba6f7]{Icons.TRACK} Tracks:[/] {total_tracks}\n"
             if desc:
-                info += f"\n[dim italic]{desc}[/dim]\n"
+                info += f"\n[dim italic]{escape(desc)}[/dim]\n"
             
             self.preview_info.update(info)
             self.preview_tracks.display = True
