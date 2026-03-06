@@ -406,3 +406,46 @@ Toast.-warning {
 Toast.-error {
     border: round #f38ba8;
 }
+
+/* Setup Screen */
+#setup-form {
+    width: 60;
+    height: auto;
+    border: round #cba6f7;
+    background: #181825;
+    padding: 1 2;
+}
+
+#setup-title {
+    text-align: center;
+    width: 100%;
+    color: #cba6f7;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#setup-help {
+    margin-bottom: 1;
+    color: #a6adc8;
+}
+
+.input-group {
+    border: solid #313244;
+    padding: 1;
+    margin-bottom: 1;
+}
+
+#setup-form Label {
+    margin-top: 1;
+    color: #cdd6f4;
+}
+
+#setup-buttons {
+    margin-top: 2;
+    height: 3;
+    align: center middle;
+}
+
+#setup-buttons Button {
+    margin: 0 1;
+}

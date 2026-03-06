@@ -12,7 +12,7 @@ class SpotifyNetwork:
 
     def authenticate(self):
         if not self.config.is_valid():
-            raise Exception("Invalid client configuration. Check .env or client.yml")
+            raise Exception("Invalid client configuration. Complete the setup form.")
             
         try:
             scope = "user-read-playback-state,user-modify-playback-state,playlist-read-private,user-read-currently-playing,user-library-read,user-read-recently-played"

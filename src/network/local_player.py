@@ -57,15 +57,12 @@ class LocalPlayer:
                 except:
                     pass
 
-    def start(self, audio_config=None):
+    def start(self, audio_config=None, credentials=None):
         if not os.path.exists(self.binary_path):
             return
 
         # Kill any orphaned processes first
         self.stop_existing()
-
-        if not self.is_authenticated():
-            self.authenticate()
 
         # Build command from user prefs or defaults
         backend = "pulseaudio"
@@ -85,6 +82,12 @@ class LocalPlayer:
             "--backend", backend,
             "-c", self.cache_dir
         ]
+        
+        if credentials and credentials.get("username") and credentials.get("password"):
+            cmd.extend(["--username", credentials["username"]])
+            cmd.extend(["--password", credentials["password"]])
+        elif not self.is_authenticated():
+            self.authenticate()
         
         # Only add device if it's not 'default' or if backend is not pulseaudio
         if device != "default":

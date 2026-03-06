@@ -12,7 +12,7 @@ from src.ui.modals.track_menu import TrackMenuPopup
 from src.core.utils import strip_icons
 
 # Components
-from src.ui.modals.telescope.header import TelescopeHeader
+from src.ui.modals.telescope.header import TelescopeHeader, TelescopeInput
 from src.ui.modals.telescope.tabs import TelescopeTabs
 from src.ui.modals.telescope.results import TelescopeResults
 from src.ui.modals.telescope.preview import TelescopePreview
@@ -45,9 +45,9 @@ class TelescopePrompt(BaseModal[str]):
         self.tabs = self.query_one(TelescopeTabs)
         self.results_list = self.query_one(TelescopeResults)
         self.preview = self.query_one(TelescopePreview)
-        self.input = self.header.query_one(Input)
+        self.input = self.header.query_one(TelescopeInput)
+        self.preview_list = self.preview.query_one("#telescope-preview-tracks")
         
-        # Start in results list or header but in NORMAL mode
         self.input.focus()
         if self.initial_query:
             self.input.value = self.initial_query
@@ -65,10 +65,29 @@ class TelescopePrompt(BaseModal[str]):
                 yield TelescopePreview(id="telescope-preview")
 
     def action_handle_escape(self):
-        if self.input_mode == "INSERT":
-            self.input_mode = "NORMAL"
-        else:
+        if self.input_mode == "NORMAL":
             self.dismiss()
+
+    def on_telescope_input_mode_changed(self, message: TelescopeInput.ModeChanged):
+        self.input_mode = message.mode
+
+    def on_telescope_input_navigate(self, message: TelescopeInput.Navigate):
+        if message.direction == "next":
+            self.results_list.focus()
+        elif message.direction == "prev":
+            if self.preview_list.display:
+                self.preview_list.focus()
+            else:
+                self.results_list.focus()
+        elif message.direction == "down":
+            self.results_list.focus()
+        elif message.direction == "right":
+            if self.preview_list.display:
+                self.preview_list.focus()
+        elif message.direction == "tab_prev":
+            self.action_prev_category()
+        elif message.direction == "tab_next":
+            self.action_next_category()
 
     def action_focus_next(self):
         if self.input.has_focus:
@@ -78,8 +97,8 @@ class TelescopePrompt(BaseModal[str]):
 
     def action_focus_previous(self):
         if self.input.has_focus:
-            if self.preview.query_one("#telescope-preview-tracks").display:
-                self.preview.query_one("#telescope-preview-tracks").focus()
+            if self.preview_list.display:
+                self.preview_list.focus()
             else:
                 self.results_list.focus()
         else:
@@ -109,12 +128,10 @@ class TelescopePrompt(BaseModal[str]):
             else:
                 hints.update("[dim] [i/a] Insert • [H/L] Tabs • [h/l] Panels • [j/k] Move [/]")
                 self.header.remove_class("insert-mode")
+            if self.input.mode != mode:
+                self.input.mode = mode
 
     def on_input_changed(self, event: Input.Changed):
-        if self.input_mode == "NORMAL" and event.value != self.initial_query:
-            # This is a safeguard but usually handled by on_key prevention
-            pass
-
         query = event.value
         if self.search_timer:
             self.search_timer.stop()
@@ -219,37 +236,17 @@ class TelescopePrompt(BaseModal[str]):
         except Exception: pass
 
     def on_key(self, event: events.Key):
-        # Mode handling for the Header Input
+        # We handle modal navigation keys here. 
+        # Characters for the input are now strictly handled by TelescopeInput._on_key
         if self.input.has_focus:
-            if self.input_mode == "NORMAL":
-                if event.character == "i":
-                    self.input_mode = "INSERT"
-                    event.prevent_default()
-                    return
-                elif event.character == "a":
-                    self.input_mode = "INSERT"
-                    self.input.cursor_position += 1
-                    event.prevent_default()
-                    return
-                elif event.key == "down":
-                    self.results_list.focus()
-                    event.prevent_default()
-                    return
-                # In Normal mode, don't let characters pass to Input
-                if event.character and len(event.character) == 1:
-                    event.prevent_default()
-                    return
-            else:
-                # INSERT Mode
-                if event.key == "escape":
-                    self.input_mode = "NORMAL"
-                    event.prevent_default()
-                    return
-                return # Let Input handle keys
+            # If input has focus, all keys are handled by the widget itself (blocked or passed through).
+            # The only thing we catch here is what the widget lets bubble.
+            return
 
         focused_widget = self.focused
         if focused_widget is None: return
 
+        # VIM Navigation (j/k/h/l)
         if event.character == "j":
             if hasattr(focused_widget, "action_cursor_down"): focused_widget.action_cursor_down()
             event.prevent_default()
@@ -262,8 +259,8 @@ class TelescopePrompt(BaseModal[str]):
             else: self.input.focus()
             event.prevent_default()
         elif event.character == "l":
-            if focused_widget.id == "telescope-results" and self.preview.query_one("#telescope-preview-tracks").display:
-                self.preview.query_one("#telescope-preview-tracks").focus()
+            if focused_widget.id == "telescope-results" and self.preview_list.display:
+                self.preview_list.focus()
             event.prevent_default()
         elif event.character == "U":
             if hasattr(focused_widget, "action_page_up"): focused_widget.action_page_up()

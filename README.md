@@ -31,16 +31,15 @@ A sleek, Neovim-inspired Spotify client for the terminal, built with Python and 
 2. Create a virtual environment and install dependencies:
    ```bash
    python -m venv venv
-   source venv/bin/bin/activate  # On Windows: venv\Scripts\activate
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
    pip install -r requirements.txt
    ```
 
-3. Set up your Spotify API credentials in a `.env` file (see `.env.example`):
-   ```env
-   SPOTIPY_CLIENT_ID=your_client_id
-   SPOTIPY_CLIENT_SECRET=your_client_secret
-   SPOTIPY_REDIRECT_URI=http://localhost:8080
+3. Launch the application:
+   ```bash
+   python app.py
    ```
+   The app will automatically guide you through the setup process on your first launch. You will need your Spotify API [Client ID and Secret](https://developer.spotify.com/dashboard).
 
 ## Usage
 
