@@ -26,7 +26,7 @@ class LoginScreen(Screen):
                     yield Button("Open Link", variant="primary", id="open-browser-btn", classes="small-btn")
                 
                 yield Label("Manual Link", classes="minimal-section-title")
-                yield Input(value=self.auth_url, id="manual-link", classes="minimal-input", read_only=True)
+                yield Input(value=self.auth_url, id="manual-link", classes="minimal-input")
 
                 yield Label("Redirect URL", classes="minimal-section-title")
                 yield Input(placeholder="Paste URL here...", id="redirect_url_input", classes="minimal-input")
