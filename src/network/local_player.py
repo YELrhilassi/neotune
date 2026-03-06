@@ -36,19 +36,34 @@ class LocalPlayer:
         return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
     def stop_existing(self):
-        """Kills any existing spotifyd processes system-wide using standard Linux tools."""
-        import subprocess
-        try:
-            # Use a robust ps/grep/kill pipeline to find and kill all spotifyd instances.
-            # ps -A lists all processes.
-            # grep spotifyd finds the daemon.
-            # grep -v grep ensures we don't try to kill our own search process.
-            # awk '{print $1}' extracts the PIDs.
-            # xargs -r kill -9 sends the terminal signal to all found PIDs.
-            cmd = "ps -A | grep spotifyd | grep -v grep | awk '{print $1}' | xargs -r kill -9"
-            subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception:
-            pass
+        """
+        Kills any existing spotifyd processes safely across platforms.
+        Handles normal and zombie (<defunct>) processes.
+        """
+        import signal
+        for proc in psutil.process_iter(['name', 'pid', 'cmdline', 'status']):
+            try:
+                # Match by process name
+                name = proc.info['name']
+                cmdline = proc.info.get('cmdline') or []
+
+                if name == 'spotifyd' or any('spotifyd' in arg for arg in cmdline):
+                    # If process is a zombie, just attempt to terminate parent
+                    if proc.info['status'] == psutil.STATUS_ZOMBIE:
+                        ppid = proc.ppid()
+                        if ppid:
+                            parent = psutil.Process(ppid)
+                            parent.send_signal(signal.SIGCHLD)
+                    else:
+                        # Try graceful termination first
+                        proc.terminate()  # SIGTERM
+                        try:
+                            proc.wait(timeout=5)
+                        except psutil.TimeoutExpired:
+                            # Force kill if still alive
+                            proc.kill()  # SIGKILL
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
                 
         # Clean up any potential lock files or stale sockets in the cache dir
         try:
