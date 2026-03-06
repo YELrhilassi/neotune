@@ -1,9 +1,9 @@
-import asyncio
+import time
 from src.core.di import Container
 from src.network.spotify_network import SpotifyNetwork
 from src.state.store import Store
 
-async def useSwitchToLocalPlayer(app, force=False):
+def useSwitchToLocalPlayer(app, force=False):
     """
     Switches playback to the local "Spotify TUI Player".
     Includes a retry loop to wait for the daemon to register with Spotify.
@@ -16,7 +16,7 @@ async def useSwitchToLocalPlayer(app, force=False):
         try:
             devices_data = network.get_devices()
             if not devices_data or not devices_data.get('devices'):
-                await asyncio.sleep(1.5) # Wait for daemon to register
+                time.sleep(1.5) # Wait for daemon to register
                 continue
             
             devices = devices_data['devices']
@@ -40,12 +40,21 @@ async def useSwitchToLocalPlayer(app, force=False):
             if target_device:
                 store.set("preferred_device_id", target_device['id'])
                 store.set("preferred_device_name", target_device['name'])
-                network.transfer_playback(target_device['id'], force_play=False)
+                
+                # Only transfer playback if there is an actively playing session globally,
+                # or if we are explicitly forced to. Transferring a "None" or dead session
+                # causes spotifyd to enter an Invalid State and refuse subsequent play commands.
+                playback = network.get_current_playback()
+                is_playing = playback and playback.get('is_playing')
+                
+                if is_playing or force:
+                    network.transfer_playback(target_device['id'], force_play=force)
+                    
                 return True
                 
         except Exception:
             pass
             
-        await asyncio.sleep(1.5) # Wait before next attempt
+        time.sleep(1.5) # Wait before next attempt
         
     return False

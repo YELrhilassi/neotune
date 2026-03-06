@@ -39,6 +39,8 @@ class TerminalRenderer(App):
     BINDINGS = [
         Binding("tab", "focus_next", "Focus Next"),
         Binding("ctrl+l", "show_logs", "Show Logs"),
+        Binding("ctrl+q", "quit", "Quit App"),
+        Binding("ctrl+c", "quit", "Quit App"),
     ]
 
     def __init__(self):
@@ -82,24 +84,21 @@ class TerminalRenderer(App):
         
         self.run_startup_sequence()
 
-    @work(exclusive=True)
-    async def run_startup_sequence(self):
-        await useEnsureActiveDevice(self, silent=False)
-        self.refresh_data()
+    @work(exclusive=True, thread=True)
+    def run_startup_sequence(self):
+        useEnsureActiveDevice(self, silent=False)
+        self.app.call_from_thread(self.refresh_data)
         
         recent = self.store.get("recently_played")
         if recent:
             self.store.set("current_tracks", recent)
         
-        await useSwitchToLocalPlayer(self)
-        self.set_timer(1.0, lambda: useAutoPlay(self))
+        useSwitchToLocalPlayer(self)
+        self.app.call_from_thread(self.set_timer, 1.0, lambda: useAutoPlay(self))
         
         self.update_now_playing()
-        self.set_interval(5.0, self.update_now_playing)
-        self.set_interval(60.0, self.check_authentication)
-
-        # Launch background self-healing daemon service
-        await useDaemonService(self)
+        self.app.call_from_thread(self.set_interval, 5.0, self.update_now_playing)
+        self.app.call_from_thread(self.set_interval, 60.0, self.check_authentication)
 
     def check_authentication(self):
         if not self.network.is_authenticated():
@@ -115,9 +114,23 @@ class TerminalRenderer(App):
     def refresh_data(self):
         useRefreshData(self)
 
-    def on_unmount(self) -> None:
+    def exit(self, result=None, return_code=0, **kwargs):
+        """Override Textual's exit to guarantee the daemon is killed before the event loop drops."""
         if self.local_player:
-            self.local_player.stop()
+            try:
+                self.local_player.stop()
+            except Exception:
+                pass
+        super().exit(result=result, return_code=return_code, **kwargs)
+
+    def action_quit(self):
+        """Called when ctrl+c or ctrl+q is pressed."""
+        if self.local_player:
+            try:
+                self.local_player.stop()
+            except Exception:
+                pass
+        self.app.exit()
 
     def safe_network_call(self, func, *args, **kwargs):
         if not self.network:
@@ -143,9 +156,9 @@ class TerminalRenderer(App):
             self.notify(f"Spotify API Error: {e}", severity="error")
             return None
 
-    @work(exclusive=True)
-    async def run_background_recovery(self):
-        await useEnsureActiveDevice(self, silent=True)
+    @work(exclusive=True, thread=True)
+    def run_background_recovery(self):
+        useEnsureActiveDevice(self, silent=True)
 
     def compose(self) -> ComposeResult:
         yield NowPlaying(id="now-playing")

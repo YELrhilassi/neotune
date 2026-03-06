@@ -4,6 +4,7 @@ import atexit
 import psutil
 import webbrowser
 import time
+import signal
 
 class LocalPlayer:
     def __init__(self, device_name="Spotify TUI Player"):
@@ -40,29 +41,16 @@ class LocalPlayer:
         Kills any existing spotifyd processes safely across platforms.
         Handles normal and zombie (<defunct>) processes.
         """
-        import signal
         for proc in psutil.process_iter(['name', 'pid', 'cmdline', 'status']):
             try:
-                # Match by process name
                 name = proc.info['name']
                 cmdline = proc.info.get('cmdline') or []
 
                 if name == 'spotifyd' or any('spotifyd' in arg for arg in cmdline):
-                    # If process is a zombie, just attempt to terminate parent
                     if proc.info['status'] == psutil.STATUS_ZOMBIE:
-                        ppid = proc.ppid()
-                        if ppid:
-                            parent = psutil.Process(ppid)
-                            parent.send_signal(signal.SIGCHLD)
-                    else:
-                        # Try graceful termination first
-                        proc.terminate()  # SIGTERM
-                        try:
-                            proc.wait(timeout=5)
-                        except psutil.TimeoutExpired:
-                            # Force kill if still alive
-                            proc.kill()  # SIGKILL
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        continue # Ignore zombies, they will be reaped by the OS init system
+                    proc.kill()  # Brutal force kill immediately to prevent UI freezes
+            except (psutil.NoSuchProcess, psutil.AccessDenied, Exception):
                 pass
                 
         # Clean up any potential lock files or stale sockets in the cache dir
@@ -75,6 +63,9 @@ class LocalPlayer:
 
     def start(self, audio_config=None):
         if not os.path.exists(self.binary_path):
+            return
+            
+        if self.is_running():
             return
 
         self._last_audio_config = audio_config
@@ -97,14 +88,12 @@ class LocalPlayer:
             "--initial-volume", "100"
         ]
         
-        # Only explicitly append backend/device if user specifically configured them
         if audio_config and audio_config.get("backend"):
             cmd.extend(["--backend", audio_config.get("backend")])
         if audio_config and audio_config.get("device") and audio_config.get("device") != "default":
             cmd.extend(["--device", audio_config.get("device")])
         
         try:
-            # We open it in the background but capture errors to a log file
             log_path = os.path.join(self.cache_dir, "daemon.log")
             self._log_file = open(log_path, "w")
             self.process = subprocess.Popen(
@@ -114,11 +103,7 @@ class LocalPlayer:
                 stderr=self._log_file
             )
             
-            # Register both normal exit and crash/termination exit
             atexit.register(self.stop)
-            
-            # Give the daemon 2 seconds to authenticate and appear in the device list
-            time.sleep(2)
         except Exception:
             pass
 
@@ -128,20 +113,25 @@ class LocalPlayer:
         self.start(audio_config=self._last_audio_config)
 
     def stop(self):
+        # We explicitly kill it instantly to prevent TUI shutdown hangs
         if self.process:
             try:
-                self.process.terminate()
-                self.process.wait(timeout=3)
+                self.process.kill()
+                # Do NOT wait() here! Calling wait() on the main thread causes the TUI to freeze.
+                # Since the Python app is exiting anyway, the OS init system will reap the zombie.
             except Exception:
-                try:
-                    self.process.kill()
-                except:
-                    pass
+                pass
             self.process = None
+            
         if hasattr(self, '_log_file') and self._log_file and not self._log_file.closed:
             try:
                 self._log_file.close()
             except Exception:
                 pass
-        # Double check to kill any orphans in the same group
-        self.stop_existing()
+                
+        # Run a final system-wide sweep without blocking
+        try:
+            import threading
+            threading.Thread(target=self.stop_existing, daemon=True).start()
+        except Exception:
+            pass

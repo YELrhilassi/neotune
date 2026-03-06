@@ -2,16 +2,23 @@ from src.core.di import Container
 from src.network.spotify_network import SpotifyNetwork
 from src.hooks.useSwitchToLocalPlayer import useSwitchToLocalPlayer
 
-async def useEnsureActiveDevice(app, silent=True):
+def useEnsureActiveDevice(app, silent=True):
     """
-    Checks if a device is currently active. If not, it attempts to activate the TUI player.
+    Checks if a device is currently active. If not, it attempts to set the preferred device
+    but avoids violently transferring playback if there is no active session.
     """
     try:
         network = Container.resolve(SpotifyNetwork)
         playback = network.get_current_playback()
+        
+        # If there is no active device at all, we don't want to force a transfer_playback
+        # because transferring an empty session causes spotifyd to crash into an Invalid State.
+        # We only force=True if there IS an active session on a DIFFERENT device.
+        is_playing = playback and playback.get('is_playing')
+        
         if not playback or not playback.get('device') or not playback['device'].get('is_active'):
             if not silent:
-                app.notify("Activating playback device...", severity="information")
-            await useSwitchToLocalPlayer(app, force=True)
+                app.notify("Connecting to local player...", severity="information")
+            useSwitchToLocalPlayer(app, force=is_playing)
     except Exception:
         pass
