@@ -9,7 +9,12 @@ from src.network.spotify_network import SpotifyNetwork
 from src.network.local_player import LocalPlayer
 from src.config.user_prefs import UserPreferences
 from src.core.command_service import CommandService
-from spotipy.oauth2 import SpotifyOauthError # Import SpotifyOauthError
+from spotipy.oauth2 import SpotifyOauthError
+
+from src.hooks.useEnsureActiveDevice import useEnsureActiveDevice
+from src.hooks.useSwitchToLocalPlayer import useSwitchToLocalPlayer
+from src.hooks.useRefreshData import useRefreshData
+from src.hooks.useUpdateNowPlaying import useUpdateNowPlaying
 
 from src.ui.components.now_playing import NowPlaying
 from src.ui.components.sidebar import SidebarPanels
@@ -37,7 +42,6 @@ class TerminalRenderer(App):
         self.leader_timer = None
 
     def notify(self, message: str, severity: str = "information", timeout: float = 3.0):
-        # We are replacing the default notify with our custom widget
         notification = CustomNotification(message, severity=severity)
         self.mount(notification)
         notification.styles.display = "block"
@@ -46,32 +50,19 @@ class TerminalRenderer(App):
     def on_mount(self) -> None:
         self.title = "Spotify TUI"
         
-        # Proactively check for an active device on startup
-        self.set_timer(0.1, self.ensure_active_device)
+        self.set_timer(0.1, lambda: useEnsureActiveDevice(self))
         
         self.refresh_data()
         
-        # Auto-load the recently played tracks as the default view
         recent = self.store.get("recently_played")
         if recent:
             self.store.set("current_tracks", recent)
         
-        # Resume previous device / Auto switch
-        self.set_timer(1.0, self.switch_to_local_player)
+        self.set_timer(1.0, lambda: useSwitchToLocalPlayer(self))
         
         self.update_now_playing()
         self.set_interval(5.0, self.update_now_playing)
-        self.set_interval(60.0, self.check_authentication) # Proactive auth check
-
-    def ensure_active_device(self):
-        try:
-            playback = self.network.get_current_playback()
-            if not playback or not playback.get('device'):
-                self.notify("No active device found. Activating TUI player...", severity="information")
-                self.switch_to_local_player(force=True)
-        except Exception:
-            # This can fail if auth is expired, which `check_authentication` will handle.
-            pass
+        self.set_interval(60.0, self.check_authentication)
 
     def check_authentication(self):
         if not self.network.is_authenticated():
@@ -85,45 +76,7 @@ class TerminalRenderer(App):
                 self.notify(f"Re-authentication failed: {e}. Please restart the application.", severity="error")
 
     def refresh_data(self):
-        try:
-            self.store.set("playlists", self.network.get_playlists())
-            self.store.set("featured_playlists", self.network.get_featured_playlists())
-            self.store.set("recently_played", self.network.get_recently_played())
-        except SpotifyOauthError as e:
-            self.notify(f"Authentication error during data refresh: {e}. Attempting re-authentication.", severity="error")
-            self.check_authentication()
-        except Exception as e:
-            self.notify(f"Spotify API Error: {e}", severity="error")
-
-    def switch_to_local_player(self, force=False):
-        try:
-            devices_data = self.network.get_devices()
-            if not devices_data or not devices_data.get('devices'):
-                return
-            
-            # If not forcing, only switch if there's no active device.
-            is_active = any(d.get('is_active') for d in devices_data['devices'])
-            if not force and is_active:
-                return
-                
-            for device in devices_data['devices']:
-                if device['name'] == "Spotify TUI Player":
-                    self.store.set("preferred_device_id", device['id'])
-                    self.store.set("preferred_device_name", device['name'])
-                    self.network.transfer_playback(device['id'], force_play=False)
-                    self.notify(f"Auto-switched to local output: {device['name']}")
-                    return # Found our preferred device
-
-            # If TUI player not found, activate the first available one
-            if force and devices_data['devices']:
-                first_device = devices_data['devices'][0]
-                self.store.set("preferred_device_id", first_device['id'])
-                self.store.set("preferred_device_name", first_device['name'])
-                self.network.transfer_playback(first_device['id'], force_play=False)
-                self.notify(f"Activated first available device: {first_device['name']}")
-
-        except Exception:
-            pass
+        useRefreshData(self)
 
     def on_unmount(self) -> None:
         if self.local_player:
@@ -150,14 +103,7 @@ class TerminalRenderer(App):
         yield StatusBar(id="status-bar")
 
     def update_now_playing(self):
-        try:
-            playback = self.network.get_current_playback()
-            self.store.set("current_playback", playback)
-        except SpotifyOauthError as e:
-            self.notify(f"Authentication error during playback update: {e}. Attempting re-authentication.", severity="error")
-            self.check_authentication()
-        except Exception:
-            pass 
+        useUpdateNowPlaying(self) 
 
     def on_key(self, event: events.Key):
         leader_key = self.user_prefs.leader
