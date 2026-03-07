@@ -38,20 +38,18 @@ class LocalPlayer:
 
     def stop_existing(self):
         """
-        Kills any existing spotifyd processes safely across platforms.
-        Handles normal and zombie (<defunct>) processes.
+        Kills any existing spotifyd processes.
+        Uses pkill to perfectly target the absolute path of the binary.
         """
-        for proc in psutil.process_iter(['name', 'pid', 'cmdline', 'status']):
-            try:
-                name = proc.info['name']
-                cmdline = proc.info.get('cmdline') or []
-
-                if name == 'spotifyd' or any('spotifyd' in arg for arg in cmdline):
-                    if proc.info['status'] == psutil.STATUS_ZOMBIE:
-                        continue # Ignore zombies, they will be reaped by the OS init system
-                    proc.kill()  # Brutal force kill immediately to prevent UI freezes
-            except (psutil.NoSuchProcess, psutil.AccessDenied, Exception):
-                pass
+        try:
+            # Forcefully kill any process matching our exact binary path
+            subprocess.run(
+                ["pkill", "-9", "-f", self.binary_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        except Exception:
+            pass
                 
         # Clean up any potential lock files or stale sockets in the cache dir
         try:
@@ -117,8 +115,7 @@ class LocalPlayer:
         if self.process:
             try:
                 self.process.kill()
-                # Do NOT wait() here! Calling wait() on the main thread causes the TUI to freeze.
-                # Since the Python app is exiting anyway, the OS init system will reap the zombie.
+                self.process.wait(timeout=1) # Wait a maximum of 1s to reap the process
             except Exception:
                 pass
             self.process = None
@@ -129,9 +126,5 @@ class LocalPlayer:
             except Exception:
                 pass
                 
-        # Run a final system-wide sweep without blocking
-        try:
-            import threading
-            threading.Thread(target=self.stop_existing, daemon=True).start()
-        except Exception:
-            pass
+        # Do a quick synchronous sweep to ensure no orphans survived
+        self.stop_existing()
