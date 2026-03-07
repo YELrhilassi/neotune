@@ -1,4 +1,5 @@
 from textual.widgets import Tree
+from textual import work
 from src.core.di import Container
 from src.state.store import Store
 from src.network.spotify_network import SpotifyNetwork
@@ -37,19 +38,33 @@ class SidebarPanels(Tree):
         rp_node = self.root.add(f"{Icons.HISTORY} {Strings.HISTORY}", expand=False)
         rp_node.add_leaf(f"{Icons.TRACK} {Strings.SHOW_RECENT}", data={"type": "recent"})
 
-    async def on_tree_node_selected(self, event: Tree.NodeSelected):
+    @work(exclusive=True, thread=True)
+    def load_playlist_tracks(self, playlist_id: str):
+        try:
+            # Tell UI we are loading
+            self.app.call_from_thread(self.app.notify, "Loading playlist...", severity="information")
+            tracks = self.network.get_playlist_tracks(playlist_id)
+            self.app.call_from_thread(self.store.set, "current_tracks", tracks)
+            self.app.call_from_thread(self.store.set, "current_context_uri", f"spotify:playlist:{playlist_id}")
+            
+            def _focus():
+                try:
+                    self.app.query_one("TrackList").focus()
+                except Exception:
+                    pass
+            self.app.call_from_thread(_focus)
+        except Exception as e:
+            self.app.call_from_thread(self.app.notify, f"Error loading tracks: {e}", severity="error")
+
+    def on_tree_node_selected(self, event: Tree.NodeSelected):
         data = event.node.data
         if not data: return
         
         if data.get("type") == "playlist":
-            try:
-                tracks = self.network.get_playlist_tracks(data['id'])
-                self.store.set("current_tracks", tracks)
-                self.app.query_one("TrackList").focus()
-            except Exception as e:
-                self.app.notify(f"Error loading tracks: {e}", severity="error")
+            self.load_playlist_tracks(data['id'])
                 
         elif data.get("type") == "recent":
             recent = self.store.get("recently_played") or []
             self.store.set("current_tracks", recent)
+            self.store.set("current_context_uri", None)
             self.app.query_one("TrackList").focus()

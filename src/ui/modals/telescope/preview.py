@@ -50,7 +50,6 @@ class TelescopePreview(Vertical):
             info_panel.update(info)
             tracks_list.display = True
             tracks_list.clear_options()
-            tracks_list.add_option("Loading tracks...")
 
         elif category == "playlists":
             owner = strip_icons(data.get('owner', {}).get('display_name', 'Unknown'))
@@ -65,7 +64,6 @@ class TelescopePreview(Vertical):
             info_panel.update(info)
             tracks_list.display = True
             tracks_list.clear_options()
-            tracks_list.add_option("Loading tracks...")
 
     def update_tracks(self, tracks: list):
         tracks_list = self.query_one(".telescope-preview-tracks", OptionList)

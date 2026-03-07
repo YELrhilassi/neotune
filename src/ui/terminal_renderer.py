@@ -27,6 +27,7 @@ from src.ui.themes import THEMES
 
 class TerminalRenderer(App):
     CSS_PATH = [
+        "../../styles/main.tcss",
         "../../styles/_base.tcss",
         "../../styles/_status_bar.tcss",
         "../../styles/_now_playing.tcss",
@@ -91,16 +92,18 @@ class TerminalRenderer(App):
         
         recent = self.store.get("recently_played")
         if recent:
-            self.store.set("current_tracks", recent)
+            self.app.call_from_thread(self.store.set, "current_tracks", recent)
         
         useSwitchToLocalPlayer(self)
+        
         self.app.call_from_thread(self.set_timer, 1.0, lambda: useAutoPlay(self))
         
-        self.update_now_playing()
+        self.app.call_from_thread(self.update_now_playing)
         self.app.call_from_thread(self.set_interval, 5.0, self.update_now_playing)
         self.app.call_from_thread(self.set_interval, 60.0, self.check_authentication)
 
     def check_authentication(self):
+        self.log_fd_count("Check auth routine")
         if not self.network.is_authenticated():
             self.notify("Authentication expired. Attempting to re-authenticate...", severity="warning")
             try:
@@ -111,26 +114,28 @@ class TerminalRenderer(App):
             except Exception as e:
                 self.notify(f"Re-authentication failed: {e}. Please restart the application.", severity="error")
 
+    def log_fd_count(self, context=""):
+        try:
+            import psutil, os
+            process = psutil.Process(os.getpid())
+            fds = process.num_fds()
+            self.app_log(f"[FD Monitor] {context} - Open File Descriptors: {fds}")
+        except Exception:
+            pass
+
     def refresh_data(self):
         useRefreshData(self)
 
-    def exit(self, result=None, return_code=0, **kwargs):
-        """Override Textual's exit to guarantee the daemon is killed before the event loop drops."""
-        if self.local_player:
-            try:
-                self.local_player.stop()
-            except Exception:
-                pass
-        super().exit(result=result, return_code=return_code, **kwargs)
-
     def action_quit(self):
         """Called when ctrl+c or ctrl+q is pressed."""
+        self.log_fd_count("action_quit")
         if self.local_player:
             try:
+                # Stop immediately to provide instant feedback and prevent music playing while Textual joins threads.
                 self.local_player.stop()
             except Exception:
                 pass
-        self.app.exit()
+        self.exit()
 
     def safe_network_call(self, func, *args, **kwargs):
         if not self.network:
@@ -142,23 +147,8 @@ class TerminalRenderer(App):
             self.check_authentication()
             return None
         except Exception as e:
-            # Handle "No Active Device" by attempting a silent re-activation
-            if "No active device" in str(e):
-                self.run_background_recovery()
-                # Try the call one more time after a short delay
-                try:
-                    import time
-                    time.sleep(1) 
-                    return func(*args, **kwargs)
-                except Exception:
-                    pass
-            
             self.notify(f"Spotify API Error: {e}", severity="error")
             return None
-
-    @work(exclusive=True, thread=True)
-    def run_background_recovery(self):
-        useEnsureActiveDevice(self, silent=True)
 
     def compose(self) -> ComposeResult:
         yield NowPlaying(id="now-playing")

@@ -50,15 +50,34 @@ class TrackList(DataTable):
         artists = ", ".join([a['name'] for a in track_data.get('artists', [])])
         display_name = f"{track_data['name']} by {artists}"
         
+        context_uri = self.store.get("current_context_uri")
+        
         def on_action_selected(action: str):
-            if action == "play":
-                if play_track(track_data['uri'], self.app):
-                    self.app.update_now_playing()
-            elif action == "radio":
-                start_track_radio(track_data['uri'], self.app)
-            elif action == "save":
-                save_track(track_data['uri'], self.app)
-            elif action == "remove":
-                remove_saved_track(track_data['uri'], self.app)
+            import threading
+            
+            def _worker():
+                if action == "play":
+                    # For non-contextual lists (like recent tracks), fall back to passing the URI list.
+                    # Otherwise use the properly engineered context URI.
+                    if context_uri:
+                        if play_track(track_data['uri'], self.app, context_uri=context_uri):
+                            self.app.call_from_thread(self.app.update_now_playing)
+                    else:
+                        # Gather URIs only as a last resort for context-less tracks (e.g. search/history)
+                        all_uris = [t['uri'] for t in self.track_data_map.values() if 'uri' in t]
+                        try:
+                            offset_pos = list(self.track_data_map.keys()).index(key)
+                        except ValueError:
+                            offset_pos = 0
+                        if play_track(all_uris, self.app, offset_position=offset_pos):
+                            self.app.call_from_thread(self.app.update_now_playing)
+                elif action == "radio":
+                    start_track_radio(track_data['uri'], self.app)
+                elif action == "save":
+                    save_track(track_data['uri'], self.app)
+                elif action == "remove":
+                    remove_saved_track(track_data['uri'], self.app)
+                    
+            threading.Thread(target=_worker, daemon=True).start()
                 
         self.app.push_screen(TrackMenuPopup(track_data['uri'], display_name), on_action_selected)

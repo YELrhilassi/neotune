@@ -10,6 +10,13 @@ class TelescopeResults(Vertical):
         yield Static("", classes="telescope-empty-state")
         yield OptionList(classes="telescope-results-list")
 
+    def show_loading(self):
+        lst = self.query_one(".telescope-results-list", OptionList)
+        empty = self.query_one(".telescope-empty-state", Static)
+        empty.display = False
+        lst.display = True
+        lst.loading = True
+
     def update_list(self, category: str, data: list):
         lst = self.query_one(".telescope-results-list", OptionList)
         empty = self.query_one(".telescope-empty-state", Static)

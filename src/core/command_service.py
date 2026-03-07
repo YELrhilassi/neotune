@@ -9,51 +9,61 @@ class CommandService:
         from src.ui.modals.telescope import TelescopePrompt
         from src.ui.modals.command_prompt import CommandPrompt
         from src.ui.modals.audio_modals import DeviceSelector, AudioConfigSelector
+        import threading
         
         network = Container.resolve(SpotifyNetwork)
         store = Container.resolve(Store)
         prefs = Container.resolve(UserPreferences)
 
+        # Network commands that should run in the background
+        def _run_network_cmd(func, success_msg_func=None):
+            def _worker():
+                result = app_instance.safe_network_call(func)
+                if result is not None:
+                    if success_msg_func:
+                        msg = success_msg_func(result)
+                        if msg:
+                            app_instance.call_from_thread(app_instance.notify, msg)
+                    app_instance.call_from_thread(app_instance.update_now_playing)
+            threading.Thread(target=_worker, daemon=True).start()
+
         if action == "play_pause":
-            playing = app_instance.safe_network_call(network.toggle_play_pause)
-            if playing is not None:
-                app_instance.notify("Playing" if playing else "Paused")
-                app_instance.update_now_playing()
+            _run_network_cmd(network.toggle_play_pause, lambda r: "Playing" if r else "Paused")
         elif action == "next_track":
-            if app_instance.safe_network_call(network.next_track) is not None:
-                app_instance.notify("Next track")
-                app_instance.update_now_playing()
+            _run_network_cmd(network.next_track, lambda r: "Next track")
         elif action == "prev_track":
-            if app_instance.safe_network_call(network.prev_track) is not None:
-                app_instance.notify("Previous track")
-                app_instance.update_now_playing()
+            _run_network_cmd(network.prev_track, lambda r: "Previous track")
         elif action == "toggle_shuffle":
-            state = app_instance.safe_network_call(network.toggle_shuffle)
-            if state is not None:
-                app_instance.notify(f"Shuffle {'On' if state else 'Off'}")
-                app_instance.update_now_playing()
+            _run_network_cmd(network.toggle_shuffle, lambda r: f"Shuffle {'On' if r else 'Off'}")
         elif action == "cycle_repeat":
-            state = app_instance.safe_network_call(network.cycle_repeat)
-            if state is not None:
-                app_instance.notify(f"Repeat: {state.capitalize()}")
-                app_instance.update_now_playing()
+            _run_network_cmd(network.cycle_repeat, lambda r: f"Repeat: {r.capitalize()}" if r else None)
         elif action == "show_device":
-            devices_data = app_instance.safe_network_call(network.get_devices)
-            if not devices_data or not devices_data.get('devices'):
-                app_instance.notify("No available devices found", severity="warning")
-                return
-            devices = devices_data['devices']
-            active_id = next((d['id'] for d in devices if d['is_active']), None)
-            def on_device_selected(device_id: str):
-                if device_id:
-                    selected_device = next((d for d in devices if d['id'] == device_id), None)
-                    if selected_device:
-                        store.set("preferred_device_id", device_id)
-                        store.set("preferred_device_name", selected_device['name'])
-                    app_instance.safe_network_call(network.transfer_playback, device_id, force_play=True)
-                    app_instance.notify(f"Switched output.")
-                    app_instance.update_now_playing()
-            app_instance.push_screen(DeviceSelector(devices, active_id), on_device_selected)
+            # Devices fetch is also a network call, but we need the result for the modal
+            def _fetch_devices():
+                devices_data = app_instance.safe_network_call(network.get_devices)
+                if not devices_data or not devices_data.get('devices'):
+                    app_instance.call_from_thread(app_instance.notify, "No available devices found", severity="warning")
+                    return
+                devices = devices_data['devices']
+                active_id = next((d['id'] for d in devices if d['is_active']), None)
+                
+                def on_device_selected(device_id: str):
+                    if device_id:
+                        selected_device = next((d for d in devices if d['id'] == device_id), None)
+                        if selected_device:
+                            store.set("preferred_device_id", device_id)
+                            store.set("preferred_device_name", selected_device['name'])
+                        
+                        def _transfer():
+                            app_instance.safe_network_call(network.transfer_playback, device_id, force_play=True)
+                            app_instance.call_from_thread(app_instance.notify, "Switched output.")
+                            app_instance.call_from_thread(app_instance.update_now_playing)
+                        threading.Thread(target=_transfer, daemon=True).start()
+
+                app_instance.call_from_thread(app_instance.push_screen, DeviceSelector(devices, active_id), on_device_selected)
+                
+            threading.Thread(target=_fetch_devices, daemon=True).start()
+            
         elif action == "show_audio":
             def on_config_selected(new_config: dict):
                 if new_config:
@@ -98,6 +108,6 @@ class CommandService:
             player.restart()
             app_instance.notify("Restarted playback daemon.")
         elif action == "quit":
-            app_instance.exit()
+            app_instance.action_quit()
         else:
             app_instance.notify(f"Unknown action: {action}", severity="warning")

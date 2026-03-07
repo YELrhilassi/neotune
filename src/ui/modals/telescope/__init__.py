@@ -184,8 +184,8 @@ class TelescopePrompt(BaseModal[str]):
         if query:
             for cat in ["tracks", "albums", "playlists"]:
                 try:
-                    lst = self.query_one(f"#results-{cat} .telescope-results-list", OptionList)
-                    lst.loading = True
+                    res_container = self.query_one(f"#results-{cat}", TelescopeResults)
+                    res_container.show_loading()
                 except Exception:
                     pass
             self.search_timer = self.set_timer(0.3, lambda: self.perform_search(query))
@@ -315,26 +315,29 @@ class TelescopePrompt(BaseModal[str]):
         if not uri: return
 
         def generic_action_handler(action: str, uri: str):
-            if not action: return
-            from src.hooks.usePlayTrack import usePlayTrack
-            from src.hooks.useTrackRadio import useTrackRadio
-            from src.hooks.useSaveTrack import useSaveTrack
-            from src.hooks.useRemoveTrack import useRemoveTrack
-            
-            if action == "play":
-                # Use properly engineered native playback. If it's a playlist or album, 
-                # Spotify will natively handle continuous playback using the context_uri.
-                # If it's a single track from search, it plays just that track.
-                context_uri = uri if self.active_category in ["albums", "playlists"] else None
-                if context_uri:
-                    if usePlayTrack(uri, self.app, context_uri=context_uri): 
-                        self.app.update_now_playing()
-                else:
-                    if usePlayTrack(uri, self.app): 
-                        self.app.update_now_playing()
-            elif action == "radio": useTrackRadio(uri, self.app)
-            elif action == "save": useSaveTrack(uri, self.app)
-            elif action == "remove": useRemoveTrack(uri, self.app)
+            import threading
+            def _worker():
+                if not action: return
+                from src.hooks.usePlayTrack import usePlayTrack
+                from src.hooks.useTrackRadio import useTrackRadio
+                from src.hooks.useSaveTrack import useSaveTrack
+                from src.hooks.useRemoveTrack import useRemoveTrack
+                
+                if action == "play":
+                    # Use properly engineered native playback. If it's a playlist or album, 
+                    # Spotify will natively handle continuous playback using the context_uri.
+                    # If it's a single track from search, it plays just that track.
+                    context_uri = uri if self.active_category in ["albums", "playlists"] else None
+                    if context_uri:
+                        if usePlayTrack(uri, self.app, context_uri=context_uri): 
+                            self.app.call_from_thread(self.app.update_now_playing)
+                    else:
+                        if usePlayTrack(uri, self.app): 
+                            self.app.call_from_thread(self.app.update_now_playing)
+                elif action == "radio": useTrackRadio(uri, self.app)
+                elif action == "save": useSaveTrack(uri, self.app)
+                elif action == "remove": useRemoveTrack(uri, self.app)
+            threading.Thread(target=_worker, daemon=True).start()
 
         name = data.get("name", "Unknown")
         if self.active_category == "tracks":
