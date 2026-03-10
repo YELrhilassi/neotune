@@ -140,21 +140,46 @@ class DebugModal(BaseModal):
 
     def _update_detail_by_index(self, index: int) -> None:
         reqs = self.debug_svc.get_network_history(limit=50)
+        # Options are in reverse order
         if reqs and index < len(reqs):
             req = list(reversed(reqs))[index]
             pane = self.query_one("#network-details", Static)
             sc = "#a6e3a1" if (req.status_code or 200) < 400 else "#f38ba8"
+
+            ts = datetime.fromtimestamp(req.timestamp).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
             details = [
-                f"[bold #89b4fa]Summary[/]",
-                f"  Method: {req.method}",
-                f"  Endpoint: [cyan]{req.endpoint}[/]",
-                f"  Status: [{sc}]{req.status_code or 'Pending'}[/]",
-                f"  Duration: {f'{req.duration_ms:.2f}ms' if req.duration_ms else 'N/A'}",
-                f"\n[bold #cba6f7]Request Data[/]",
-                f"[dim]{json.dumps(req.params, indent=2, default=str)}[/]",
+                f"[bold #89b4fa]General Information[/]",
+                f"  [bold]Method:[/] {req.method}",
+                f"  [bold]Endpoint:[/] [cyan]{req.endpoint}[/]",
+                f"  [bold]Status:[/] [{sc}]{req.status_code or 'Pending'}[/]",
+                f"  [bold]Time:[/] {ts}",
+                f"  [bold]ID:[/] {req.id}",
             ]
+
+            if req.duration_ms is not None:
+                details.append(f"  [bold]Duration:[/] {req.duration_ms:.2f}ms")
+            if req.response_size:
+                details.append(f"  [bold]Estimated Size:[/] {req.response_size} bytes")
+
+            details.append(f"\n[bold #cba6f7]Request Parameters[/]")
+            try:
+                params_str = json.dumps(req.params, indent=2, default=str)
+                details.append(f"[dim]{params_str}[/]")
+            except:
+                details.append(f"[dim]{str(req.params)}[/]")
+
+            if req.response_body:
+                details.append(f"\n[bold #a6e3a1]Response Data Snippet[/]")
+                try:
+                    body_str = json.dumps(req.response_body, indent=2, default=str)
+                    details.append(f"[dim]{body_str}[/]")
+                except:
+                    details.append(f"[dim]{str(req.response_body)}[/]")
+
             if req.error:
-                details.extend([f"\n[bold #f38ba8]Error[/]", f"[#f38ba8]{req.error}[/]"])
+                details.extend([f"\n[bold #f38ba8]Error Details[/]", f"[#f38ba8]{req.error}[/]"])
+
             pane.update("\n".join(details))
 
     # --- Copy Logic ---

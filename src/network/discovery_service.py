@@ -15,12 +15,14 @@ class DiscoveryService(SpotifyServiceBase):
         return result.get("categories", {}).get("items", []) if result else []
 
     def get_featured_playlists(self, country: Optional[str] = None) -> Dict[str, Any]:
+        # Use low min_interval for this to allow retries but not spam
         result = self._safe_api_call(
             self.sp.featured_playlists,
             country=country,
             limit=20,
             track_name="featured_playlists",
             cache_ttl=600,
+            min_interval=60.0,  # Don't retry more than once a minute on failure
         )
         return {
             "message": result.get("message", "Featured") if result else "Featured",

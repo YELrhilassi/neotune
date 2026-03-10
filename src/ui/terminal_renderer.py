@@ -1,3 +1,4 @@
+import time
 from typing import Dict, Any, List, Optional, cast, Literal, Set, TYPE_CHECKING
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal
@@ -135,25 +136,68 @@ class TerminalRenderer(App):
 
     @work(exclusive=True, thread=True)
     def run_startup_sequence(self) -> None:
+        """Coordinated startup to prevent network flood."""
+        # 1. Ensure we have a device
         useEnsureActiveDevice(self, silent=False)
 
-        # Sequentially refresh initial data
+        # 2. First data fetch
         self.refresh_data()
 
-        # Restore context from store
+        # 3. Restore tracks from history
         recent = self.store.get("recently_played")
         if recent:
             self.call_from_thread(self.store.set, "current_tracks", recent)
 
+        # 4. Start player integrations
         useSwitchToLocalPlayer(self)
-        self.call_from_thread(self.set_timer, 1.0, lambda: useAutoPlay(self))
+        self.call_from_thread(self.set_timer, 2.0, lambda: useAutoPlay(self))
 
-        # Immediate first check
-        self.update_now_playing()
+        # 5. Start main heartbeat
+        self.call_from_thread(self.set_interval, 2.0, self.app_heartbeat)
 
-        # Start steady background heartbeats
-        self.call_from_thread(self.set_interval, 4.0, self.update_now_playing)
-        self.call_from_thread(self.set_interval, 180.0, self.check_authentication)
+    def app_heartbeat(self) -> None:
+        """Central heartbeat with adaptive polling logic."""
+        now = time.time()
+
+        # 1. Determine Polling Priority
+        playback = self.store.get("current_playback")
+        is_playing = bool(playback and playback.get("is_playing"))
+
+        # Calculate ideal interval
+        if is_playing:
+            # Check progress
+            progress_ms = playback.get("progress_ms", 0)
+            duration_ms = playback.get("item", {}).get("duration_ms", 0)
+            remaining_ms = duration_ms - progress_ms
+
+            # If near end of track (< 10s), poll faster
+            if remaining_ms < 10000:
+                interval = 2.0
+            else:
+                interval = 10.0
+        else:
+            # If paused or no session, poll slowly
+            interval = 30.0 if playback else 60.0
+
+        # 2. Execute Polling if enough time passed
+        if not hasattr(self, "_last_playback_poll") or now - self._last_playback_poll >= interval:
+            self.update_now_playing()
+            self._last_playback_poll = now
+
+        # 3. Slower background tasks
+        if not hasattr(self, "_last_auth_check") or now - self._last_auth_check > 600:
+            self.check_authentication()
+            self._last_auth_check = now
+
+        if not hasattr(self, "_last_device_sync") or now - self._last_device_sync > 60:
+            # Background sync devices
+            try:
+                network = Container.resolve(SpotifyNetwork)
+                devices = network.get_devices()
+                self.store.set("devices", devices.get("devices", []))
+                self._last_device_sync = now
+            except:
+                pass
 
     def check_authentication(self) -> None:
         if not self.network.is_authenticated():

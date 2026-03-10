@@ -54,9 +54,17 @@ class PlaylistsBranch(BaseBranch):
                 display_name = name
                 seen_names[name] = 1
 
-            pl_root.add_leaf(
-                display_name, data={"type": "playlist", "id": pl.get("id")}
-            )
+            pl_root.add_leaf(display_name, data={"type": "playlist", "id": pl.get("id")})
+
+
+class RecentlyPlayedBranch(BaseBranch):
+    """Handles the 'Recently Played' entry at the top level."""
+
+    def build(self):
+        self.root.add_leaf(
+            f"{Icons.HISTORY} Recently Played",
+            data={"type": "recently_played", "id": "recently_played"},
+        )
 
 
 class FeaturedBranch(BaseBranch):
@@ -99,9 +107,7 @@ class FeaturedBranch(BaseBranch):
         # Create the subtree nodes
         subtree_nodes = {}
         for key, label, _ in sections:
-            subtree_nodes[key] = ft_root.add(
-                label, data={"type": "group", "id": f"subtree_{key}"}
-            )
+            subtree_nodes[key] = ft_root.add(label, data={"type": "group", "id": f"subtree_{key}"})
 
         # 3. Categorize Browse Data into Subtrees
         for cat in categories:
@@ -118,11 +124,7 @@ class FeaturedBranch(BaseBranch):
                 target_key = "top_mixes"
             elif "station" in name_lower or "discover" in name_lower:
                 target_key = "recommended"
-            elif (
-                user_profile
-                and user_profile.get("id")
-                and str(user_profile.get("id")) in cat_id
-            ):
+            elif user_profile and user_profile.get("id") and str(user_profile.get("id")) in cat_id:
                 target_key = "made_for_user"
 
             if target_key:
@@ -156,27 +158,7 @@ class FeaturedBranch(BaseBranch):
                     data={"type": "category_root", "id": cat.get("id")},
                 )
 
-        # 6. Recently Played (Separate Top-level branch)
-        history = self.store.get("recently_played") or []
-        if history:
-            hist_root = self.root.add(
-                f"{Icons.HISTORY} Recently Played",
-                expand=False,
-                data={"type": "group", "id": "history_group"},
-            )
-            seen_tracks = set()
-            for item in history:
-                track = item.get("track")
-                if track and track.get("id") not in seen_tracks:
-                    seen_tracks.add(track.get("id"))
-                    hist_root.add_leaf(
-                        strip_icons(track.get("name", "Track")),
-                        data={"type": "playlist", "id": track.get("uri")},
-                    )
-                if len(seen_tracks) >= 15:
-                    break
-
-        # 7. Cleanup Empty Subtrees
+        # 6. Cleanup Empty Subtrees
         for node in list(ft_root.children):
             if not node.children:
                 node.remove()

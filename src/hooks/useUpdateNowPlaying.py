@@ -8,20 +8,32 @@ from src.state.store import Store
 def useUpdateNowPlaying(app, force=False):
     """
     Updates the 'Now Playing' information from the Spotify API.
-    Rate limiting is managed by the PlaybackService.
+    Rate limiting and locking are handled by the PlaybackService.
     """
     try:
         network = Container.resolve(SpotifyNetwork)
         store = Container.resolve(Store)
 
-        # This call is internally debounced by PlaybackService (TTL cache)
+        # 1. Fetch playback state (debounced by service)
         playback = network.get_current_playback(force=force)
 
         if playback is not None:
-            # Only update store if data actually changed to prevent reactive loops
+            # 2. Only update if data changed (compare relevant IDs/states)
             current = store.get("current_playback")
+
+            # Use simple deep comparison or target keys
             if current != playback:
                 store.set("current_playback", playback)
+
+        # 3. Periodically sync devices too (every few heartbeats)
+        # We'll use the store to track when we last did this
+        last_dev_sync = store.get("_last_device_sync") or 0
+        import time
+
+        if time.time() - last_dev_sync > 10.0:
+            devices = network.get_devices()
+            store.set("devices", devices.get("devices", []))
+            store.set("_last_device_sync", time.time())
 
     except Exception:
         pass

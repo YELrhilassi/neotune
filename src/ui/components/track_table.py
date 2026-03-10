@@ -64,9 +64,7 @@ class TrackList(DataTable):
             if not track or not isinstance(track, dict) or "name" not in track:
                 continue
 
-            artists = ", ".join(
-                [strip_icons(a.get("name", "")) for a in track.get("artists", [])]
-            )
+            artists = ", ".join([strip_icons(a.get("name", "")) for a in track.get("artists", [])])
             duration_ms = track.get("duration_ms", 0)
             duration_min = duration_ms // 60000
             duration_sec = (duration_ms % 60000) // 1000
@@ -114,15 +112,17 @@ class TrackList(DataTable):
 
             def _worker():
                 if action == "play":
-                    if context_uri and context_uri != "liked_songs":
+                    if (
+                        context_uri
+                        and context_uri != "liked_songs"
+                        and context_uri != "recently_played"
+                    ):
                         if play_track(track_data["uri"], app, context_uri=context_uri):
                             app.call_from_thread(app.update_now_playing)
                     else:
                         # Fallback for search results or liked songs
                         all_uris = [
-                            t.get("uri")
-                            for t in self.track_data_map.values()
-                            if t.get("uri")
+                            t.get("uri") for t in self.track_data_map.values() if t.get("uri")
                         ]
                         try:
                             keys_list = list(self.track_data_map.keys())
@@ -140,6 +140,4 @@ class TrackList(DataTable):
 
             threading.Thread(target=_worker, daemon=True).start()
 
-        self.app.push_screen(
-            TrackMenuPopup(track_data["uri"], display_name), on_action_selected
-        )
+        self.app.push_screen(TrackMenuPopup(track_data["uri"], display_name), on_action_selected)

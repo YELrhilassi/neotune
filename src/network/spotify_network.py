@@ -18,9 +18,24 @@ class SpotifyNetwork:
     def __init__(self, config):
         self.config = config
         self.auth = AuthService(config)
-        self.playback = PlaybackService()
-        self.library = LibraryService()
-        self.discovery = DiscoveryService()
+
+        # Use singletons for sub-services if they exist in Container, otherwise create
+        from src.core.di import Container
+
+        try:
+            self.playback = Container.resolve(PlaybackService)
+        except:
+            self.playback = PlaybackService()
+
+        try:
+            self.library = Container.resolve(LibraryService)
+        except:
+            self.library = LibraryService()
+
+        try:
+            self.discovery = Container.resolve(DiscoveryService)
+        except:
+            self.discovery = DiscoveryService()
 
         self.sp: Optional[spotipy.Spotify] = None
         self._sync_client()
@@ -66,8 +81,8 @@ class SpotifyNetwork:
     def get_devices(self) -> Dict[str, Any]:
         return {"devices": self.playback.get_devices()}
 
-    def play_track(self, uri, device_id=None, context_uri=None, offset=None):
-        self.playback.play_track(uri, device_id, context_uri, offset)
+    def play_track(self, uri, device_id=None, context_uri=None, offset_position=None):
+        self.playback.play_track(uri, device_id, context_uri, offset_position)
 
     def transfer_playback(self, device_id, force_play=True):
         self.playback.transfer(device_id, force_play)

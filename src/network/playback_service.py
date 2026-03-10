@@ -1,34 +1,64 @@
 """Service for managing Spotify playback and devices."""
 
 import time
+import threading
 from typing import Optional, List, Dict, Any
 from src.core.constants import PlayerSettings
 from src.network.base import SpotifyServiceBase
 
 
 class PlaybackService(SpotifyServiceBase):
-    """Manages active playback controls and state polling."""
+    """Manages active playback controls and state polling with strict deduplication."""
 
     def __init__(self, sp=None):
         super().__init__(sp)
         self._last_playback_state = None
         self._last_state_time = 0
-        self._state_cache_ttl = 1.5  # Forced internal TTL to prevent polling spam
+        self._state_cache_ttl = 10.0  # Increased TTL significantly for smart sync
+
+        self._last_devices = []
+        self._last_devices_time = 0
+        self._devices_cache_ttl = 30.0  # Devices change very rarely
+
+        self._lock = threading.Lock()
 
     def get_current_playback(self, force: bool = False) -> Optional[Dict[str, Any]]:
-        """Fetch current playback state with strict deduplication."""
-        now = time.time()
-        if not force and (now - self._last_state_time < self._state_cache_ttl):
-            return self._last_playback_state
+        """Fetch current playback state with predictive local sync."""
+        with self._lock:
+            now = time.time()
 
-        state = self._safe_api_call(self.sp.current_playback, track_name="current_playback")
-        self._last_playback_state = state
-        self._last_state_time = now
-        return state
+            # If not forcing and within TTL, return predictive state or cached state
+            if not force and (now - self._last_state_time < self._state_cache_ttl):
+                if self._last_playback_state and self._last_playback_state.get("is_playing"):
+                    # Predict progress
+                    elapsed_ms = int((now - self._last_state_time) * 1000)
+                    predicted = self._last_playback_state.copy()
+                    predicted["progress_ms"] = (
+                        self._last_playback_state.get("progress_ms", 0) + elapsed_ms
+                    )
+                    return predicted
+                return self._last_playback_state
 
-    def get_devices(self) -> List[Dict[str, Any]]:
-        result = self._safe_api_call(self.sp.devices, default_return={}, track_name="devices")
-        return result.get("devices", []) if result else []
+            # Actual API call
+            state = self._safe_api_call(self.sp.current_playback, track_name="current_playback")
+
+            # Update cache
+            self._last_playback_state = state
+            self._last_state_time = now
+            return state
+
+    def get_devices(self, force: bool = False) -> List[Dict[str, Any]]:
+        """Fetch available devices with aggressive caching."""
+        with self._lock:
+            now = time.time()
+            if not force and (now - self._last_devices_time < self._devices_cache_ttl):
+                return self._last_devices
+
+            result = self._safe_api_call(self.sp.devices, default_return={}, track_name="devices")
+            devices = result.get("devices", []) if result else []
+            self._last_devices = devices
+            self._last_devices_time = now
+            return devices
 
     def find_fallback_device(self) -> Optional[str]:
         """Look for a suitable device without aggressive re-polling."""
@@ -60,18 +90,27 @@ class PlaybackService(SpotifyServiceBase):
                     return operation(*args, **kwargs)
             raise
 
-    def play_track(self, track_uri, device_id=None, context_uri=None, offset=None):
+    def play_track(
+        self,
+        track_uri: Any,
+        device_id: Optional[str] = None,
+        context_uri: Optional[str] = None,
+        offset_position: Optional[int] = None,
+    ):
+        """Start playback with consistent parameter naming."""
         params = {}
         if device_id:
             params["device_id"] = device_id
         if context_uri:
             params["context_uri"] = context_uri
-        if offset is not None:
-            params["offset"] = {"position": int(offset)}
+        if offset_position is not None:
+            params["offset"] = {"position": int(offset_position)}
 
         if isinstance(track_uri, str) and ":track:" in track_uri:
             params["uris"] = [track_uri]
-            params["offset"] = {"uri": track_uri}
+            # If playing a single track, offset to it
+            if "offset" not in params:
+                params["offset"] = {"uri": track_uri}
         elif isinstance(track_uri, list):
             params["uris"] = track_uri
 

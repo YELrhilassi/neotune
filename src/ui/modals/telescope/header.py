@@ -2,11 +2,14 @@ from textual.app import ComposeResult
 from textual.widgets import Input, Label
 from textual.containers import Horizontal
 from textual import events
+from textual.message import Message
+
 
 class TelescopeInput(Input):
     """
     A custom Input widget that supports Vim-like NORMAL and INSERT modes.
     """
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.mode = "NORMAL"
@@ -76,7 +79,7 @@ class TelescopeInput(Input):
                 event.stop()
                 event.prevent_default()
                 return
-        
+
         # If not handled, let the base class process it (e.g. typing in INSERT mode)
         await super()._on_key(event)
 
@@ -86,19 +89,23 @@ class TelescopeInput(Input):
             self.mode = "NORMAL"
             self.post_message(self.ModeChanged("NORMAL"))
 
-    class ModeChanged(events.Message):
+    class ModeChanged(Message):
         def __init__(self, mode: str):
             super().__init__()
             self.mode = mode
 
-    class Navigate(events.Message):
+    class Navigate(Message):
         def __init__(self, direction: str):
             super().__init__()
             self.direction = direction
 
+
 class TelescopeHeader(Horizontal):
     def compose(self) -> ComposeResult:
         from src.core.icons import Icons
+
         yield Label(Icons.TELESCOPE, id="telescope-icon")
         yield TelescopeInput(placeholder="Search Spotify...", id="telescope-input")
-        yield Label("[dim] [i/a] Insert • [H/L] Tabs • [h/l] Panels • [j/k] Move [/]", id="telescope-hints")
+        yield Label(
+            "[dim] [i/a] Insert • [H/L] Tabs • [h/l] Panels • [j/k] Move [/]", id="telescope-hints"
+        )

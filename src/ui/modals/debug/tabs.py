@@ -13,6 +13,7 @@ from textual import on, events
 
 from src.core.icons import Icons
 from src.core.di import Container as DIContainer
+from src.state.store import Store
 from src.core.debug.models import LogLevel, NetworkRequest, LogEntry
 from src.core.debug.service import DebugService
 from src.ui.modals.debug.input import DebugInput
@@ -124,7 +125,10 @@ class NetworkTab(BaseDebugTab):
                     if r.error
                     else "#89b4fa"
                 )
-                list_view.add_option(f"[{sc}]{status_icon}[/] {r.method} [cyan]{r.endpoint}[/]")
+                ts = datetime.fromtimestamp(r.timestamp).strftime("%H:%M:%S")
+                list_view.add_option(
+                    f"[dim]{ts}[/] [{sc}]{status_icon}[/] {r.method} [cyan]{r.endpoint}[/]"
+                )
 
             if old_idx is not None and old_idx < list_view.option_count:
                 list_view.highlighted = old_idx

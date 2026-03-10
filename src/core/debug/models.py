@@ -31,6 +31,8 @@ class NetworkRequest:
     status_code: Optional[int] = None
     error: Optional[str] = None
     response_size: Optional[int] = None
+    response_body: Optional[Any] = None
+    headers: Optional[Dict[str, str]] = None
 
 
 @dataclass

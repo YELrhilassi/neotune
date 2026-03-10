@@ -8,6 +8,7 @@ from src.state.store import Store
 from src.network.spotify_network import SpotifyNetwork
 from src.ui.components.content_tree.tree_nodes import (
     LikedSongsBranch,
+    RecentlyPlayedBranch,
     PlaylistsBranch,
     FeaturedBranch,
 )
@@ -81,6 +82,7 @@ class ContentTree(Tree):
             self.clear()
             try:
                 LikedSongsBranch(self.root, self.store).build()
+                RecentlyPlayedBranch(self.root, self.store).build()
                 PlaylistsBranch(self.root, self.store).build()
                 FeaturedBranch(self.root, self.store).build()
             except Exception as e:
@@ -139,9 +141,7 @@ class ContentTree(Tree):
         if node_type in ["group", "category_root"]:
             if node_type == "category_root" and not event.node.children:
                 # Lazy load category playlists
-                self.load_category_playlists(
-                    event.node, data.get("id"), str(event.node.label)
-                )
+                self.load_category_playlists(event.node, data.get("id"), str(event.node.label))
 
             # Standard toggle
             event.node.toggle()
@@ -155,11 +155,11 @@ class ContentTree(Tree):
             self.load_playlist_tracks(node_id)
         elif node_type == "liked_songs":
             self.load_liked_songs()
+        elif node_type == "recently_played":
+            self.load_recently_played()
 
     @work(exclusive=True, thread=True)
-    def load_category_playlists(
-        self, node: TreeNode, category_id: str, category_name: str = ""
-    ):
+    def load_category_playlists(self, node: TreeNode, category_id: str, category_name: str = ""):
         """Lazy loader for browse categories."""
         try:
 
@@ -178,9 +178,7 @@ class ContentTree(Tree):
                 search_res = self.network.search(
                     query=f"{clean_name} owner:spotify", qtype="playlist", limit=20
                 )
-                playlists = [
-                    r["data"] for r in search_res if r.get("_qtype") == "playlist"
-                ]
+                playlists = [r["data"] for r in search_res if r.get("_qtype") == "playlist"]
 
             def _update_ui():
                 node.remove_children()
@@ -192,17 +190,13 @@ class ContentTree(Tree):
                     for pl in playlists:
                         if pl and isinstance(pl, dict):
                             name = strip_icons(pl.get("name", "Unknown Playlist"))
-                            node.add_leaf(
-                                name, data={"type": "playlist", "id": pl.get("id")}
-                            )
+                            node.add_leaf(name, data={"type": "playlist", "id": pl.get("id")})
                 node.expand()
 
             self.app.call_from_thread(_update_ui)
         except Exception as e:
             if self.app:
-                self.app.call_from_thread(
-                    self.app.notify, f"Error: {e}", severity="error"
-                )
+                self.app.call_from_thread(self.app.notify, f"Error: {e}", severity="error")
             self.app.call_from_thread(node.remove_children)
 
     @work(exclusive=True, thread=True)
@@ -231,9 +225,38 @@ class ContentTree(Tree):
             self.app.call_from_thread(_focus)
         except Exception as e:
             if self.app:
-                self.app.call_from_thread(
-                    self.app.notify, f"Error: {e}", severity="error"
-                )
+                self.app.call_from_thread(self.app.notify, f"Error: {e}", severity="error")
+        finally:
+            current_l = self.store.get("loading_states") or {}
+            self.app.call_from_thread(
+                self.store.set, "loading_states", {**current_l, "track_list": False}
+            )
+
+    @work(exclusive=True, thread=True)
+    def load_recently_played(self):
+        """Background worker for recently played tracks."""
+        try:
+            current_l = self.store.get("loading_states") or {}
+            self.app.call_from_thread(
+                self.store.set, "loading_states", {**current_l, "track_list": True}
+            )
+            # Fetch from network to ensure it's fresh
+            tracks = self.network.get_recently_played()
+            self.app.call_from_thread(self.store.set, "current_tracks", tracks)
+            self.app.call_from_thread(
+                self.store.set, "last_active_context", "recently_played", persist=True
+            )
+
+            def _focus():
+                try:
+                    self.app.query_one("TrackList").focus()
+                except:
+                    pass
+
+            self.app.call_from_thread(_focus)
+        except Exception as e:
+            if self.app:
+                self.app.call_from_thread(self.app.notify, f"Error: {e}", severity="error")
         finally:
             current_l = self.store.get("loading_states") or {}
             self.app.call_from_thread(
@@ -263,9 +286,7 @@ class ContentTree(Tree):
             self.app.call_from_thread(_focus)
         except Exception as e:
             if self.app:
-                self.app.call_from_thread(
-                    self.app.notify, f"Error: {e}", severity="error"
-                )
+                self.app.call_from_thread(self.app.notify, f"Error: {e}", severity="error")
         finally:
             current_l = self.store.get("loading_states") or {}
             self.app.call_from_thread(

@@ -17,6 +17,7 @@ def useEnsureActiveDevice(app, silent=True):
 
     try:
         playback_svc = Container.resolve(PlaybackService)
+        # Use cached state if possible
         playback = playback_svc.get_current_playback()
 
         # Check if we have an active session on any device
@@ -24,8 +25,13 @@ def useEnsureActiveDevice(app, silent=True):
         is_active = bool(playback and playback.get("device", {}).get("is_active"))
 
         if not is_active:
-            if not silent:
-                app.notify("Activating local player...", severity="information")
-            useSwitchToLocalPlayer(app, force=is_playing)
+            # Check if our local player is available before trying to transfer
+            devices = playback_svc.get_devices()
+            has_local = any(d.get("name") == "Spotify TUI Player" for d in devices)
+
+            if has_local:
+                if not silent:
+                    app.notify("Activating local player...", severity="information")
+                useSwitchToLocalPlayer(app, force=is_playing)
     except Exception:
         pass

@@ -2,6 +2,8 @@
 
 import time
 import uuid
+import threading
+import json
 from typing import Any, Optional, Dict
 import spotipy
 from spotipy.exceptions import SpotifyException
@@ -14,6 +16,9 @@ logger = get_logger("spotify_service")
 
 class SpotifyServiceBase:
     """Base class for Spotify services with shared API call logic."""
+
+    _last_call_times: Dict[str, float] = {}
+    _call_lock = threading.Lock()
 
     def __init__(self, sp: Optional[spotipy.Spotify] = None):
         self.sp = sp
@@ -31,6 +36,7 @@ class SpotifyServiceBase:
         default_return: Any = None,
         track_name: Optional[str] = None,
         cache_ttl: Optional[int] = None,
+        min_interval: Optional[float] = 1.0,  # Prevent spamming the same endpoint
         **kwargs,
     ) -> Any:
         """Execute API call with error handling, tracking, and optional caching."""
@@ -38,6 +44,16 @@ class SpotifyServiceBase:
             return default_return
 
         endpoint = track_name or func.__name__
+
+        # Global Rate Limiting / Debouncing
+        if min_interval:
+            with self._call_lock:
+                now = time.time()
+                last_call = self._last_call_times.get(endpoint, 0)
+                if now - last_call < min_interval:
+                    # Silent return, no log Start to avoid spam
+                    return default_return
+                self._last_call_times[endpoint] = now
 
         # 1. Check Cache
         if cache_ttl is not None:
@@ -57,7 +73,17 @@ class SpotifyServiceBase:
             duration_ms = (time.time() - start_time) * 1000
 
             # 3. Track success
-            self._debug.network_end(request_id, status_code=200)
+            # Estimate size
+            try:
+                res_str = json.dumps(result, default=str)
+                size = len(res_str)
+                # Cap body in debug for performance
+                body_snippet = result if size < 2000 else {"info": "Body too large", "size": size}
+            except:
+                size = 0
+                body_snippet = None
+
+            self._debug.network_end(request_id, status_code=200, size=size, body=body_snippet)
             self._debug.track_performance(endpoint, duration_ms)
 
             # 4. Save to Cache
@@ -68,7 +94,12 @@ class SpotifyServiceBase:
             return result
         except SpotifyException as e:
             duration_ms = (time.time() - start_time) * 1000
-            logger.warning(f"Spotify API error ({endpoint}): {e}")
+            error_msg = f"Spotify API error ({endpoint}): {e}"
+            logger.warning(error_msg)
+
+            # Direct log to debug service for visibility
+            self._debug.error("Network", error_msg)
+
             self._debug.network_end(
                 request_id, error=str(e), status_code=getattr(e, "http_status", None)
             )
@@ -76,7 +107,12 @@ class SpotifyServiceBase:
             return default_return
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
-            logger.error(f"Unexpected error in API call ({endpoint}): {e}")
+            error_msg = f"Unexpected error in API call ({endpoint}): {e}"
+            logger.error(error_msg)
+
+            # Direct log to debug service
+            self._debug.error("Network", error_msg)
+
             self._debug.network_end(request_id, error=str(e))
             self._debug.track_performance(endpoint, duration_ms)
             return default_return

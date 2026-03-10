@@ -49,7 +49,9 @@ class AuthService:
                 self._debug.info("AuthService", "Login successful")
                 return spotipy.Spotify(auth_manager=self._auth_manager)
         except Exception as e:
-            logger.error(f"Login failed: {e}")
+            msg = f"Login failed: {e}"
+            logger.error(msg)
+            self._debug.error("AuthService", msg)
         return None
 
     def get_client(self) -> Optional[spotipy.Spotify]:
@@ -67,7 +69,9 @@ class AuthService:
             try:
                 self._auth_manager.refresh_access_token(token_info["refresh_token"])
             except Exception as e:
-                logger.error(f"Token refresh failed: {e}")
+                msg = f"Token refresh failed: {e}"
+                logger.error(msg)
+                self._debug.error("AuthService", msg)
                 return None
 
         return spotipy.Spotify(auth_manager=self._auth_manager)

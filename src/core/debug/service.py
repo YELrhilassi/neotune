@@ -108,9 +108,7 @@ class DebugService:
         )
         self._network_requests.append(req)
         self._notify_network_subscribers(req)
-        self.log(
-            LogLevel.NETWORK, "Network", f"{method} {endpoint} (Started)", {"request_id": req_id}
-        )
+        # Noise reduction: NETWORK and PERFORMANCE events don't go to standard logs
 
     def network_end(
         self,
@@ -118,6 +116,8 @@ class DebugService:
         status_code: Optional[int] = None,
         size: Optional[int] = None,
         error: Optional[str] = None,
+        body: Optional[Any] = None,
+        headers: Optional[Dict[str, str]] = None,
     ):
         if not self.config.enabled or not self.config.network_tracking:
             return
@@ -125,24 +125,13 @@ class DebugService:
         dur = (time.time() - start) * 1000 if start else None
         target = next((r for r in self._network_requests if r.id == req_id), None)
         if target:
-            target.duration_ms, target.status_code, target.response_size, target.error = (
-                dur,
-                status_code,
-                size,
-                error,
-            )
+            target.duration_ms = dur
+            target.status_code = status_code
+            target.response_size = size
+            target.error = error
+            target.response_body = body
+            target.headers = headers
             self._notify_network_subscribers(target)
-        if error:
-            self.log(
-                LogLevel.NETWORK, "Network", f"Request failed: {error}", {"request_id": req_id}
-            )
-        else:
-            self.log(
-                LogLevel.NETWORK,
-                "Network",
-                f"Request completed: {status_code}",
-                {"request_id": req_id, "duration": dur},
-            )
 
     def track_performance(self, op: str, dur: float):
         if not self.config.enabled or not self.config.performance_tracking:
@@ -152,7 +141,7 @@ class DebugService:
         self._performance_metrics[op].append(dur)
         if len(self._performance_metrics[op]) > 100:
             self._performance_metrics[op] = self._performance_metrics[op][-100:]
-        self.log(LogLevel.PERFORMANCE, "Performance", f"'{op}' took {dur:.2f}ms")
+        # Reduced noise: don't log to standard logs
 
     def get_log_entries(self, limit: int = 100):
         return list(self._log_entries)[-limit:]
