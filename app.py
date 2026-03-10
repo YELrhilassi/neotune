@@ -6,6 +6,10 @@ from src.state.store import Store
 from src.config.client_config import ClientConfiguration
 from src.config.user_prefs import UserPreferences
 from src.network.spotify_network import SpotifyNetwork
+from src.network.auth_service import AuthService
+from src.network.playback_service import PlaybackService
+from src.network.library_service import LibraryService
+from src.network.discovery_service import DiscoveryService
 from src.network.local_player import LocalPlayer
 from src.network.auth_server import AuthServer
 from src.core.command_service import CommandService
@@ -18,7 +22,7 @@ from textual.containers import Vertical, Center
 
 
 def setup_config():
-    """Register essential services that don't depend on Spotify Auth."""
+    """Register essential services."""
     Container.register(ClientConfiguration, ClientConfiguration, singleton=True)
     Container.register(UserPreferences, UserPreferences, singleton=True)
     Container.register(Store, Store, singleton=True)
@@ -27,13 +31,20 @@ def setup_config():
 
 
 def setup_spotify():
-    """Register Spotify-dependent services once config is valid."""
+    """Register Spotify-dependent services."""
     client_config = Container.resolve(ClientConfiguration)
     if not client_config.is_valid():
         return False
 
+    # 1. Initialize core network facade
     network = SpotifyNetwork(client_config)
     Container.register(SpotifyNetwork, lambda: network, singleton=True)
+
+    # 2. Expose internal specialized services
+    Container.register(AuthService, lambda: network.auth, singleton=True)
+    Container.register(PlaybackService, lambda: network.playback, singleton=True)
+    Container.register(LibraryService, lambda: network.library, singleton=True)
+    Container.register(DiscoveryService, lambda: network.discovery, singleton=True)
 
     if network.is_authenticated():
         player = LocalPlayer()
@@ -65,9 +76,7 @@ class OnboardingScreen(Screen):
             try:
                 webbrowser.open("http://127.0.0.1:8080")
             except Exception:
-                self.app.notify(
-                    "Failed to open browser automatically.", severity="warning"
-                )
+                self.app.notify("Failed to open browser automatically.", severity="warning")
         elif event.button.id == "quit-btn":
             self.app.exit()
 
@@ -102,15 +111,11 @@ class OnboardingApp(App):
             client_config.redirect_uri = event["redirect_uri"]
             client_config.save()
 
-            # Now trigger Spotify Login
             network = SpotifyNetwork(client_config)
             Container.register(SpotifyNetwork, lambda: network, singleton=True)
             auth_url = network.get_auth_url()
-
-            # Pass the URL back to the server so the browser can see it
             self.auth_server.set_auth_url(auth_url)
 
-            # Try to open browser, but don't worry if it fails
             try:
                 webbrowser.open(auth_url)
             except Exception:
@@ -130,7 +135,6 @@ if __name__ == "__main__":
     setup_config()
     client_config = Container.resolve(ClientConfiguration)
 
-    # Check if we need to do the onboarding
     if not client_config.is_valid() or not setup_spotify():
         server = AuthServer(port=8080)
         server.start()
@@ -143,16 +147,13 @@ if __name__ == "__main__":
 
         setup_spotify()
 
-    # Start Local Player (librespot)
     player = Container.resolve(LocalPlayer)
     network = Container.resolve(SpotifyNetwork)
     if player and network:
-        # Since we use librespot direct now, it's easier
         prefs = Container.resolve(UserPreferences)
         token = network.get_access_token()
         player.start(audio_config=prefs.audio_config, access_token=token)
 
-    # Launch main TUI
     app = TerminalRenderer()
     try:
         app.run()

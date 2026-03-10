@@ -136,19 +136,24 @@ class TerminalRenderer(App):
     @work(exclusive=True, thread=True)
     def run_startup_sequence(self) -> None:
         useEnsureActiveDevice(self, silent=False)
-        self.call_from_thread(self.refresh_data)
 
+        # Sequentially refresh initial data
+        self.refresh_data()
+
+        # Restore context from store
         recent = self.store.get("recently_played")
         if recent:
             self.call_from_thread(self.store.set, "current_tracks", recent)
 
         useSwitchToLocalPlayer(self)
         self.call_from_thread(self.set_timer, 1.0, lambda: useAutoPlay(self))
-        self.call_from_thread(self.update_now_playing)
 
-        # Slower intervals for background sync
-        self.call_from_thread(self.set_interval, 3.0, self.update_now_playing)
-        self.call_from_thread(self.set_interval, 120.0, self.check_authentication)
+        # Immediate first check
+        self.update_now_playing()
+
+        # Start steady background heartbeats
+        self.call_from_thread(self.set_interval, 4.0, self.update_now_playing)
+        self.call_from_thread(self.set_interval, 180.0, self.check_authentication)
 
     def check_authentication(self) -> None:
         if not self.network.is_authenticated():
@@ -202,7 +207,7 @@ class TerminalRenderer(App):
             yield TrackList(id="track-list")
         yield StatusBar(id="status-bar")
 
-    @work(thread=True)
+    @work(exclusive=True, thread=True)
     def update_now_playing(self, force: bool = False) -> None:
         useUpdateNowPlaying(self, force=force)
 
