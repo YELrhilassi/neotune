@@ -5,6 +5,7 @@ import threading
 from typing import Optional, Any
 from src.core.constants import PlayerSettings
 from src.network.base import SpotifyServiceBase
+from src.core.di import Container
 
 
 class PlaybackService(SpotifyServiceBase):
@@ -28,45 +29,108 @@ class PlaybackService(SpotifyServiceBase):
             now = time.time()
 
             # 1. Smart Sync Logic
-            # If we have a state and we're within the TTL window, return predicted progress
             if (
                 not force
                 and self._last_playback_state
                 and (now - self._last_state_time < self._state_cache_ttl)
             ):
                 if self._last_playback_state.get("is_playing"):
-                    # Calculate local progress prediction
                     elapsed_ms = int((now - self._last_state_time) * 1000)
                     predicted = self._last_playback_state.copy()
-
-                    # Ensure we don't predict past the track duration
                     duration = predicted.get("item", {}).get("duration_ms", 0)
                     new_progress = predicted.get("progress_ms", 0) + elapsed_ms
-
                     if duration > 0 and new_progress >= duration:
-                        # Near end: fall through to actual API call
                         pass
                     else:
                         predicted["progress_ms"] = new_progress
                         return predicted
                 else:
-                    # If paused, cache is 100% accurate
                     return self._last_playback_state
 
-            # 2. Actual API Call (Throttled by Base Service min_interval)
-            # Use a slightly longer interval here to strictly control traffic
+            # 2. Actual API Call
             state = self._safe_api_call(
                 self.sp.current_playback, track_name="current_playback", min_interval=5.0
             )
 
-            # If API returns None (due to throttling or error), use last known
             if state is None:
                 return self._last_playback_state
+
+            # Record activity if context changed
+            self._record_activity_from_state(state)
 
             # Update cache
             self._last_playback_state = state
             self._last_state_time = now
             return state
+
+    def _record_activity_from_state(self, state: dict[str, Any]):
+        """Record recently played contexts from playback state."""
+        if not state or not state.get("is_playing"):
+            return
+
+        # Record if this device is active (regardless of name) OR if it's our specific player
+        device = state.get("device", {})
+        if not device.get("is_active") and device.get("name") != PlayerSettings.DEVICE_NAME:
+            return
+
+        context = state.get("context")
+        if not context:
+            return
+
+        uri = context.get("uri")
+        ctype = context.get("type")
+
+        if not uri or ctype not in ["playlist", "album"]:
+            return
+
+        # Check if it's different from last recorded
+        if not hasattr(self, "_last_recorded_uri") or self._last_recorded_uri != uri:
+            self._last_recorded_uri = uri
+
+            from src.core.activity_service import ActivityService
+            from src.core.di import Container as DIContainer
+            from src.network.library_service import LibraryService
+
+            activity = DIContainer.resolve(ActivityService)
+
+            # Use a background task to fetch metadata if needed to not block polling
+            def _fetch_meta_and_record():
+                try:
+                    from src.network.library_service import LibraryService
+
+                    library = DIContainer.resolve(LibraryService)
+
+                    name = f"{ctype.capitalize()}: {uri.split(':')[-1]}"
+                    metadata = {}
+
+                    if ctype == "playlist":
+                        # Fetch full playlist object for name and owner
+                        playlist_id = uri.split(":")[-1]
+                        meta = library.get_playlist_metadata(playlist_id)
+                        if meta:
+                            name = meta.get("name", name)
+                            owner = meta.get("owner", {}).get("display_name", "")
+                            if owner:
+                                metadata["artists"] = f"by {owner}"
+                    elif ctype == "album":
+                        # Fetch full album object for name and artists
+                        album_id = uri.split(":")[-1]
+                        meta = library.get_album_metadata(album_id)
+                        if meta:
+                            name = meta.get("name", name)
+                            artists = meta.get("artists", [])
+                            if artists:
+                                metadata["artists"] = ", ".join(
+                                    [a.get("name", "") for a in artists]
+                                )
+
+                    activity.record_context_play(uri, name, ctype, metadata)
+                except Exception as e:
+                    self._debug.error("Playback", f"Failed to fetch metadata for {uri}: {e}")
+
+            import threading
+
+            threading.Thread(target=_fetch_meta_and_record, daemon=True).start()
 
     def get_devices(self, force: bool = True) -> list[dict[str, Any]]:
         """Fetch available devices. Defaults to forcing a fresh fetch for accuracy."""
@@ -131,6 +195,7 @@ class PlaybackService(SpotifyServiceBase):
             params["device_id"] = device_id
         if context_uri:
             params["context_uri"] = context_uri
+
         if offset_position is not None:
             params["offset"] = {"position": int(offset_position)}
 

@@ -60,11 +60,37 @@ class TrackList(DataTable):
         for item in tracks:
             if not item or not isinstance(item, dict):
                 continue
+
+            # Handle unified history format (type: context or track)
+            if item.get("type") == "context":
+                uri = item.get("uri", "")
+                name = item.get("name", "Unknown Context")
+                ctype = item.get("context_type", "Context")
+                metadata = item.get("metadata", {})
+
+                unique_key = f"{uri}_{uuid.uuid4().hex[:8]}"
+                self.track_data_map[unique_key] = item
+
+                icon = Icons.PLAYLIST if ctype == "playlist" else Icons.ALBUM
+
+                self.add_row(
+                    f"{icon} {strip_icons(name)}",
+                    metadata.get("artists", f"[{ctype.capitalize()}]"),
+                    "Playlist" if ctype == "playlist" else strip_icons(name),
+                    "-",
+                    key=unique_key,
+                )
+                continue
+
             track = item.get("track", item)
             if not track or not isinstance(track, dict) or "name" not in track:
                 continue
 
-            artists = ", ".join([strip_icons(a.get("name", "")) for a in track.get("artists", [])])
+            artists_list = track.get("artists", [])
+            if isinstance(artists_list, list):
+                artists = ", ".join([strip_icons(a.get("name", "")) for a in artists_list])
+            else:
+                artists = "Unknown Artist"
             duration_ms = track.get("duration_ms", 0)
             duration_min = duration_ms // 60000
             duration_sec = (duration_ms % 60000) // 1000
@@ -90,10 +116,29 @@ class TrackList(DataTable):
         if not key:
             return
 
-        track_data = self.track_data_map.get(key)
-        if not track_data:
+        item_data = self.track_data_map.get(key)
+        if not item_data:
             return
 
+        # Handle Context Rows (Playlist/Album)
+        if item_data.get("type") == "context":
+            uri = item_data.get("uri")
+            from src.ui.terminal_renderer import TerminalRenderer
+
+            if not isinstance(self.app, TerminalRenderer):
+                return
+            app = cast(TerminalRenderer, self.app)
+
+            def _play_context():
+                if play_track(uri, app):
+                    app.call_from_thread(cast(Any, app).update_now_playing)
+
+            import threading
+
+            threading.Thread(target=_play_context, daemon=True).start()
+            return
+
+        track_data = item_data
         artists = ", ".join([a.get("name", "") for a in track_data.get("artists", [])])
         display_name = f"{track_data.get('name', 'Unknown')} by {artists}"
 

@@ -253,15 +253,25 @@ class ContentTree(Tree):
 
     @work(exclusive=True, thread=True)
     def load_recently_played(self):
-        """Background worker for recently played tracks."""
+        """Background worker for recently played tracks and contexts."""
         try:
             current_l = self.store.get("loading_states") or {}
             self.app.call_from_thread(
                 self.store.set, "loading_states", {**current_l, "track_list": True}
             )
-            # Fetch from network to ensure it's fresh
-            tracks = self.network.get_recently_played()
-            self.app.call_from_thread(self.store.set, "current_tracks", tracks)
+
+            # 1. Fetch from Spotify API (last tracks)
+            api_tracks = self.network.get_recently_played()
+
+            # 2. Fetch from local ActivityService (last playlists/albums)
+            from src.core.activity_service import ActivityService
+
+            activity_svc = Container.resolve(ActivityService)
+
+            # 3. Combine them
+            combined = activity_svc.get_combined_history(api_tracks)
+
+            self.app.call_from_thread(self.store.set, "current_tracks", combined)
             self.app.call_from_thread(
                 self.store.set, "last_active_context", "recently_played", persist=True
             )

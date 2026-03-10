@@ -14,6 +14,7 @@ from src.network.local_player import LocalPlayer
 from src.network.auth_server import AuthServer
 from src.core.command_service import CommandService
 from src.core.cache import CacheStore
+from src.core.activity_service import ActivityService
 from src.ui.terminal_renderer import TerminalRenderer
 from textual.app import App, ComposeResult
 from textual.screen import Screen
@@ -28,6 +29,7 @@ def setup_config():
     Container.register(Store, Store, singleton=True)
     Container.register(CommandService, CommandService, singleton=True)
     Container.register(CacheStore, CacheStore, singleton=True)
+    Container.register(ActivityService, ActivityService, singleton=True)
 
 
 def setup_spotify():

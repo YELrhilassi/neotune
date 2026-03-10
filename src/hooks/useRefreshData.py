@@ -51,7 +51,11 @@ def useRefreshData(app):
                     if last_ctx == "liked_songs":
                         tracks = network.get_liked_songs()
                     elif last_ctx == "recently_played":
-                        tracks = network.get_recently_played()
+                        api_tracks = network.get_recently_played()
+                        from src.core.activity_service import ActivityService
+
+                        activity_svc = Container.resolve(ActivityService)
+                        tracks = activity_svc.get_combined_history(api_tracks)
                     else:
                         parts = last_ctx.split(":")
                         tracks = network.get_playlist_tracks(parts[2]) if len(parts) >= 3 else []
