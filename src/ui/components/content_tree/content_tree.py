@@ -160,7 +160,7 @@ class ContentTree(Tree):
 
     @work(exclusive=True, thread=True)
     def load_category_playlists(self, node: TreeNode, category_id: str, category_name: str = ""):
-        """Lazy loader for browse categories."""
+        """Lazy loader for browse categories with automatic filtering of unresponsive items."""
         try:
 
             def _set_loading():
@@ -169,34 +169,53 @@ class ContentTree(Tree):
 
             self.app.call_from_thread(_set_loading)
 
+            # Try to get playlists
             playlists = self.network.get_playlists_by_category(category_id)
 
+            # If browse failed but we have a name, try a generic search as a last resort
             if not playlists and category_name:
                 from src.core.utils import strip_icons
 
                 clean_name = strip_icons(category_name)
-                search_res = self.network.search(
-                    query=f"{clean_name} owner:spotify", qtype="playlist", limit=20
-                )
-                playlists = [r["data"] for r in search_res if r.get("_qtype") == "playlist"]
+                # Filter out generic 'Mixes' or ID-looking names for search
+                if len(clean_name) > 2 and not clean_name.startswith("0JQ"):
+                    search_res = self.network.search(
+                        query=f"{clean_name} owner:spotify", qtype="playlist", limit=10
+                    )
+                    playlists = [r["data"] for r in search_res if r.get("_qtype") == "playlist"]
 
             def _update_ui():
+                if not playlists:
+                    # Filter unresponsive: remove node if it fails to load content
+                    # This keeps the sidebar clean of "broken" categories
+                    try:
+                        node.remove()
+                        # Only notify if it was a user click, not background refresh
+                        # (Checking focus is a decent proxy for user intent here)
+                        if self.has_focus:
+                            self.app.notify(
+                                f"Filtered unresponsive category: {category_name}",
+                                severity="warning",
+                            )
+                    except:
+                        pass
+                    return
+
                 node.remove_children()
                 from src.core.utils import strip_icons
 
-                if not playlists:
-                    node.add_leaf("No playlists found", data={"type": "info"})
-                else:
-                    for pl in playlists:
-                        if pl and isinstance(pl, dict):
-                            name = strip_icons(pl.get("name", "Unknown Playlist"))
-                            node.add_leaf(name, data={"type": "playlist", "id": pl.get("id")})
+                for pl in playlists:
+                    if pl and isinstance(pl, dict):
+                        name = strip_icons(pl.get("name", "Unknown Playlist"))
+                        node.add_leaf(name, data={"type": "playlist", "id": pl.get("id")})
                 node.expand()
 
             self.app.call_from_thread(_update_ui)
         except Exception as e:
             if self.app:
-                self.app.call_from_thread(self.app.notify, f"Error: {e}", severity="error")
+                self.app.call_from_thread(
+                    self.app.notify, f"Error loading category: {e}", severity="error"
+                )
             self.app.call_from_thread(node.remove_children)
 
     @work(exclusive=True, thread=True)

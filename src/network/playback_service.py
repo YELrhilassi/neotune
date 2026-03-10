@@ -27,20 +27,41 @@ class PlaybackService(SpotifyServiceBase):
         with self._lock:
             now = time.time()
 
-            # If not forcing and within TTL, return predictive state or cached state
-            if not force and (now - self._last_state_time < self._state_cache_ttl):
-                if self._last_playback_state and self._last_playback_state.get("is_playing"):
-                    # Predict progress
+            # 1. Smart Sync Logic
+            # If we have a state and we're within the TTL window, return predicted progress
+            if (
+                not force
+                and self._last_playback_state
+                and (now - self._last_state_time < self._state_cache_ttl)
+            ):
+                if self._last_playback_state.get("is_playing"):
+                    # Calculate local progress prediction
                     elapsed_ms = int((now - self._last_state_time) * 1000)
                     predicted = self._last_playback_state.copy()
-                    predicted["progress_ms"] = (
-                        self._last_playback_state.get("progress_ms", 0) + elapsed_ms
-                    )
-                    return predicted
-                return self._last_playback_state
 
-            # Actual API call
-            state = self._safe_api_call(self.sp.current_playback, track_name="current_playback")
+                    # Ensure we don't predict past the track duration
+                    duration = predicted.get("item", {}).get("duration_ms", 0)
+                    new_progress = predicted.get("progress_ms", 0) + elapsed_ms
+
+                    if duration > 0 and new_progress >= duration:
+                        # Near end: fall through to actual API call
+                        pass
+                    else:
+                        predicted["progress_ms"] = new_progress
+                        return predicted
+                else:
+                    # If paused, cache is 100% accurate
+                    return self._last_playback_state
+
+            # 2. Actual API Call (Throttled by Base Service min_interval)
+            # Use a slightly longer interval here to strictly control traffic
+            state = self._safe_api_call(
+                self.sp.current_playback, track_name="current_playback", min_interval=5.0
+            )
+
+            # If API returns None (due to throttling or error), use last known
+            if state is None:
+                return self._last_playback_state
 
             # Update cache
             self._last_playback_state = state
@@ -83,10 +104,15 @@ class PlaybackService(SpotifyServiceBase):
         try:
             return operation(*args, **kwargs)
         except Exception as e:
-            if "No active device" in str(e):
+            # Handle NO_ACTIVE_DEVICE specifically
+            if "No active device" in str(e) or "NO_ACTIVE_DEVICE" in str(e):
+                self._debug.warning("Playback", "No active device. Attempting auto-recovery...")
                 dev_id = self.find_fallback_device()
                 if dev_id:
-                    kwargs["device_id"] = dev_id
+                    self._debug.info("Playback", f"Auto-transferring playback to device: {dev_id}")
+                    self.transfer(dev_id, force_play=True)
+                    # Retry the original operation after a short settle time
+                    time.sleep(1.0)
                     return operation(*args, **kwargs)
             raise
 
@@ -120,8 +146,23 @@ class PlaybackService(SpotifyServiceBase):
         self._safe_api_call(self.sp.pause_playback, track_name="pause_playback")
 
     def resume(self):
+        """Resume playback with proactive device check to avoid 404s."""
+        # 1. Proactive check
+        state = self.get_current_playback()
+        if not state or not state.get("device", {}).get("is_active"):
+            # Try to recover before even calling the API
+            dev_id = self.find_fallback_device()
+            if dev_id:
+                self._debug.info("Playback", f"Activating device {dev_id} before resume")
+                self.transfer(dev_id, force_play=True)
+                return
+
+        # 2. Standard call with fallback recovery
         self._safe_api_call(
-            self._execute_with_fallback, self.sp.start_playback, track_name="resume_playback"
+            self._execute_with_fallback,
+            self.sp.start_playback,
+            track_name="resume_playback",
+            suppress_status_codes=[404],  # Suppress 404 if recovery still fails
         )
 
     def next(self):

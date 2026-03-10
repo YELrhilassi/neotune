@@ -9,20 +9,33 @@ class DiscoveryService(SpotifyServiceBase):
     """Handles Spotify catalog search and discovery features."""
 
     def get_categories(self, country: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Fetch available browse categories with validation."""
         result = self._safe_api_call(
-            self.sp.categories, country=country, limit=50, track_name="categories", cache_ttl=3600
+            self.sp.categories,
+            country=country,
+            limit=50,
+            track_name="categories",
+            cache_ttl=3600,
+            min_interval=300.0,
         )
-        return result.get("categories", {}).get("items", []) if result else []
+        if not result:
+            return []
+
+        categories = result.get("categories", {}).get("items", [])
+
+        # Validation: ensure category has id and name
+        return [c for c in categories if c and c.get("id") and c.get("name")]
 
     def get_featured_playlists(self, country: Optional[str] = None) -> Dict[str, Any]:
-        # Use low min_interval for this to allow retries but not spam
+        """Fetch featured playlists with 404 suppression."""
         result = self._safe_api_call(
             self.sp.featured_playlists,
             country=country,
             limit=20,
             track_name="featured_playlists",
             cache_ttl=600,
-            min_interval=60.0,  # Don't retry more than once a minute on failure
+            min_interval=60.0,
+            suppress_status_codes=[404],  # Feature might not be available in all regions
         )
         return {
             "message": result.get("message", "Featured") if result else "Featured",
@@ -56,26 +69,35 @@ class DiscoveryService(SpotifyServiceBase):
     def get_category_playlists(
         self, category_id: str, country: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        # multi-stage fallback logic
+        """Fetch playlists for a category with robust fallbacks and 404 handling."""
+        # 1. Try official category_playlists endpoint
         for name, params in [
             ("cat_playlists", {"category_id": category_id, "country": country}),
             ("cat_playlists_no_country", {"category_id": category_id}),
         ]:
             res = self._safe_api_call(
-                self.sp.category_playlists, **params, track_name=name, cache_ttl=1800
+                self.sp.category_playlists,
+                **params,
+                track_name=name,
+                cache_ttl=1800,
+                min_interval=10.0,
+                suppress_status_codes=[404],  # Common for personalized or empty categories
             )
             if res and res.get("playlists", {}).get("items"):
-                return [p for p in res["playlists"]["items"] if p]
+                items = [p for p in res["playlists"]["items"] if p]
+                if items:
+                    return items
 
-        # Final search fallback
-        query = CategoryMappings.QUERY_MAP.get(category_id, category_id)
-        if "owner:spotify" not in query:
-            query = f"{query} owner:spotify"
-        res = self._safe_api_call(
-            self.sp.search,
-            q=query,
-            type="playlist",
-            track_name="cat_search_fallback",
-            cache_ttl=1800,
-        )
-        return res.get("playlists", {}).get("items", []) if res else []
+        # 2. If browse fails, check if we have a search term mapping
+        query = CategoryMappings.QUERY_MAP.get(category_id)
+        if query:
+            res = self._safe_api_call(
+                self.sp.search,
+                q=query,
+                type="playlist",
+                track_name="cat_search_fallback",
+                cache_ttl=1800,
+            )
+            return res.get("playlists", {}).get("items", []) if res else []
+
+        return []

@@ -115,17 +115,19 @@ class FeaturedBranch(BaseBranch):
                 continue
             cat_id = cat.get("id", "")
             cat_name = cat.get("name", "")
+            if not cat_id or not cat_name:
+                continue
+
             name_lower = cat_name.lower()
 
             target_key = None
             if "made for you" in name_lower or cat_id == "made-for-you":
                 target_key = "made_for_you"
-            elif "mix" in name_lower:
+            elif "mix" in name_lower or cat_id == "top-mixes":
                 target_key = "top_mixes"
-            elif "station" in name_lower or "discover" in name_lower:
+            elif "station" in name_lower or "discover" in name_lower or cat_id == "discover":
                 target_key = "recommended"
-            elif user_profile and user_profile.get("id") and str(user_profile.get("id")) in cat_id:
-                target_key = "made_for_user"
+            # Note: Removed the user_profile based ID matching as it's unreliable and causes 404s
 
             if target_key:
                 subtree_nodes[target_key].add(

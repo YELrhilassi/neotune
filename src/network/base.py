@@ -37,9 +37,21 @@ class SpotifyServiceBase:
         track_name: Optional[str] = None,
         cache_ttl: Optional[int] = None,
         min_interval: Optional[float] = 1.0,  # Prevent spamming the same endpoint
+        suppress_status_codes: Optional[List[int]] = None,
         **kwargs,
     ) -> Any:
-        """Execute API call with error handling, tracking, and optional caching."""
+        """Execute API call with error handling, tracking, and optional caching.
+
+        Args:
+            func: API function to call
+            *args: Positional arguments
+            default_return: Value to return on failure
+            track_name: Optional name for network tracking
+            cache_ttl: Optional TTL in seconds for caching the result
+            min_interval: Minimum time between calls to the same endpoint
+            suppress_status_codes: HTTP status codes to catch without error logging
+            **kwargs: Keyword arguments
+        """
         if not self.sp:
             return default_return
 
@@ -94,15 +106,18 @@ class SpotifyServiceBase:
             return result
         except SpotifyException as e:
             duration_ms = (time.time() - start_time) * 1000
-            error_msg = f"Spotify API error ({endpoint}): {e}"
-            logger.warning(error_msg)
+            status_code = getattr(e, "http_status", None)
 
-            # Direct log to debug service for visibility
-            self._debug.error("Network", error_msg)
+            # Check if we should suppress the error log
+            should_suppress = suppress_status_codes and status_code in suppress_status_codes
 
-            self._debug.network_end(
-                request_id, error=str(e), status_code=getattr(e, "http_status", None)
-            )
+            if not should_suppress:
+                error_msg = f"Spotify API error ({endpoint}): {e}"
+                logger.warning(error_msg)
+                # Direct log to debug service for visibility
+                self._debug.error("Network", error_msg)
+
+            self._debug.network_end(request_id, error=str(e), status_code=status_code)
             self._debug.track_performance(endpoint, duration_ms)
             return default_return
         except Exception as e:

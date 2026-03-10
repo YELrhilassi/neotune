@@ -113,10 +113,9 @@ class ErrorMessages:
 class CategoryMappings:
     """Spotify category ID to search query mappings for fallback."""
 
+    # These are general search terms to use if the category browse endpoint fails.
     QUERY_MAP = {
-        "made-for-you": "Mix owner:spotify",
-        "top_mixes": "Top Mix owner:spotify",
-        "discover": "Discover owner:spotify",
-        "0JQ5DAqbMKFHOzu9Kzcc9M": "Mix owner:spotify",
-        "0JQ5DAt0tbjZptfcdMSKl3": "Mix owner:spotify",
+        "made-for-you": "Made For You",
+        "top-mixes": "Your Top Mixes",
+        "discover": "Discover Weekly",
     }

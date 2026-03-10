@@ -156,48 +156,55 @@ class TerminalRenderer(App):
         self.call_from_thread(self.set_interval, 2.0, self.app_heartbeat)
 
     def app_heartbeat(self) -> None:
-        """Central heartbeat with adaptive polling logic."""
+        """Central heartbeat with adaptive sequential logic."""
         now = time.time()
 
-        # 1. Determine Polling Priority
-        playback = self.store.get("current_playback")
-        is_playing = bool(playback and playback.get("is_playing"))
+        # Prevent heartbeat overlapping if previous run is still going
+        if hasattr(self, "_heartbeat_in_flight") and self._heartbeat_in_flight:
+            return
 
-        # Calculate ideal interval
-        if is_playing:
-            # Check progress
-            progress_ms = playback.get("progress_ms", 0)
-            duration_ms = playback.get("item", {}).get("duration_ms", 0)
-            remaining_ms = duration_ms - progress_ms
+        self._heartbeat_in_flight = True
 
-            # If near end of track (< 10s), poll faster
-            if remaining_ms < 10000:
-                interval = 2.0
+        try:
+            # 1. Determine Polling Priority
+            playback = self.store.get("current_playback")
+            is_playing = bool(playback and playback.get("is_playing"))
+
+            # Calculate ideal interval
+            if is_playing:
+                progress_ms = playback.get("progress_ms", 0)
+                duration_ms = playback.get("item", {}).get("duration_ms", 0)
+                remaining_ms = duration_ms - progress_ms
+                # If near end of track (< 10s), poll faster
+                interval = 2.0 if remaining_ms < 10000 else 10.0
             else:
-                interval = 10.0
-        else:
-            # If paused or no session, poll slowly
-            interval = 30.0 if playback else 60.0
+                # If paused or no session, poll very slowly
+                interval = 60.0
 
-        # 2. Execute Polling if enough time passed
-        if not hasattr(self, "_last_playback_poll") or now - self._last_playback_poll >= interval:
-            self.update_now_playing()
-            self._last_playback_poll = now
+            # 2. Execute Polling sequentially
+            if (
+                not hasattr(self, "_last_playback_poll")
+                or now - self._last_playback_poll >= interval
+            ):
+                self.update_now_playing()
+                self._last_playback_poll = now
 
-        # 3. Slower background tasks
-        if not hasattr(self, "_last_auth_check") or now - self._last_auth_check > 600:
-            self.check_authentication()
-            self._last_auth_check = now
+            # 3. Slower background tasks (chained)
+            if not hasattr(self, "_last_auth_check") or now - self._last_auth_check > 600:
+                self.check_authentication()
+                self._last_auth_check = now
 
-        if not hasattr(self, "_last_device_sync") or now - self._last_device_sync > 60:
-            # Background sync devices
-            try:
-                network = Container.resolve(SpotifyNetwork)
-                devices = network.get_devices()
-                self.store.set("devices", devices.get("devices", []))
-                self._last_device_sync = now
-            except:
-                pass
+            if not hasattr(self, "_last_device_sync") or now - self._last_device_sync > 120:
+                # Background sync devices
+                try:
+                    network = Container.resolve(SpotifyNetwork)
+                    devices_data = network.get_devices()
+                    self.store.set("devices", devices_data.get("devices", []))
+                    self._last_device_sync = now
+                except:
+                    pass
+        finally:
+            self._heartbeat_in_flight = False
 
     def check_authentication(self) -> None:
         if not self.network.is_authenticated():
