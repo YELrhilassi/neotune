@@ -10,6 +10,7 @@ from src.network.spotify_network import SpotifyNetwork
 from src.network.local_player import LocalPlayer
 from src.config.user_prefs import UserPreferences
 from src.core.command_service import CommandService
+from src.core.debug_logger import DebugLogger, LogLevel
 from spotipy.oauth2 import SpotifyOauthError
 
 from src.hooks.useEnsureActiveDevice import useEnsureActiveDevice
@@ -55,11 +56,11 @@ class TerminalRenderer(App):
 
     def __init__(self):
         super().__init__()
-        self._log_buffer: List[str] = []
+        self.user_prefs = Container.resolve(UserPreferences)
+        self.debug_logger = DebugLogger()
         self.store = Container.resolve(Store)
         self.network = Container.resolve(SpotifyNetwork)
         self.local_player = Container.resolve(LocalPlayer)
-        self.user_prefs = Container.resolve(UserPreferences)
         self.command_service = Container.resolve(CommandService)
 
         self.leader_mode = False
@@ -77,8 +78,10 @@ class TerminalRenderer(App):
         """Executed via leader key mapping or global Space handler."""
         self.command_service.execute("play_pause", self)
 
-    def app_log(self, message: str) -> None:
-        self._log_buffer.append(message)
+    def app_log(self, message: str, level: str = "info", source: str = "App") -> None:
+        """Centralized logging method that uses DebugLogger."""
+        log_level = LogLevel(level.lower()) if hasattr(LogLevel, level.upper()) else LogLevel.INFO
+        self.debug_logger.log(log_level, source, message)
         self.log(message)
 
     def notify(
@@ -118,12 +121,6 @@ class TerminalRenderer(App):
         self.title = "Spotify TUI"
         self.apply_theme(self.user_prefs.theme)
 
-        # Ensure 'space' is NOT bound to anything globally by default
-        try:
-            self._bindings.unbind("space")
-        except:
-            pass
-
         self.store.set("nav_bindings", dict(self.user_prefs.nav_bindings))
         self.run_startup_sequence()
 
@@ -139,14 +136,14 @@ class TerminalRenderer(App):
         useSwitchToLocalPlayer(self)
         self.call_from_thread(self.set_timer, 1.0, lambda: useAutoPlay(self))
         self.call_from_thread(self.update_now_playing)
-        self.call_from_thread(self.set_interval, 5.0, self.update_now_playing)
-        self.call_from_thread(self.set_interval, 60.0, self.check_authentication)
+
+        # Slower intervals for background sync
+        self.call_from_thread(self.set_interval, 3.0, self.update_now_playing)
+        self.call_from_thread(self.set_interval, 120.0, self.check_authentication)
 
     def check_authentication(self) -> None:
         if not self.network.is_authenticated():
-            self.notify(
-                "Authentication expired. Re-authenticating...", severity="warning"
-            )
+            self.notify("Authentication expired. Re-authenticating...", severity="warning")
             try:
                 self.network.reauthenticate()
                 self.notify("Re-authentication successful.", severity="information")
@@ -197,8 +194,8 @@ class TerminalRenderer(App):
         yield StatusBar(id="status-bar")
 
     @work(thread=True)
-    def update_now_playing(self) -> None:
-        useUpdateNowPlaying(self)
+    def update_now_playing(self, force: bool = False) -> None:
+        useUpdateNowPlaying(self, force=force)
 
     def cancel_leader(self) -> None:
         self.leader_mode = False

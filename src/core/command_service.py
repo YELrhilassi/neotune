@@ -1,162 +1,421 @@
+"""Command service with Command pattern implementation."""
+
+from abc import ABC, abstractmethod
+from typing import Any, Callable, Dict, List, Optional
+import threading
+
 from src.core.di import Container
+from src.core.logging_config import get_logger
+from src.core.debug_logger import DebugLogger
 from src.state.store import Store
 from src.network.spotify_network import SpotifyNetwork
 from src.config.user_prefs import UserPreferences
+from src.network.local_player import LocalPlayer
+from src.actions.auth_actions import logout
+from src.actions.health_check import perform_health_check
+
+logger = get_logger("commands")
 
 
-class CommandService:
-    def execute(self, action: str, app_instance):
-        from src.ui.modals.theme_selector import ThemeSelector
-        from src.ui.modals.telescope import TelescopePrompt
-        from src.ui.modals.command_prompt import CommandPrompt
-        from src.ui.modals.audio_modals import DeviceSelector, AudioConfigSelector
-        import threading
+class Command(ABC):
+    """Abstract base class for commands."""
+
+    @abstractmethod
+    def execute(self, app_instance: Any, *args: Any, **kwargs: Any) -> None:
+        """Execute the command.
+
+        Args:
+            app_instance: The application instance
+            args: Variable positional arguments
+            kwargs: Variable keyword arguments
+        """
+        pass
+
+
+class CommandRegistry:
+    """Registry for managing and executing commands."""
+
+    def __init__(self) -> None:
+        self._commands: Dict[str, Command] = {}
+        self.debug_logger = DebugLogger()
+
+    def register(self, name: str, command: Command) -> None:
+        """Register a command.
+
+        Args:
+            name: Command identifier
+            command: Command instance to register
+        """
+        self._commands[name] = command
+        logger.debug(f"Registered command: {name}")
+
+    def unregister(self, name: str) -> None:
+        """Unregister a command.
+
+        Args:
+            name: Command identifier to remove
+        """
+        if name in self._commands:
+            del self._commands[name]
+            logger.debug(f"Unregistered command: {name}")
+
+    def execute(self, name: str, app_instance: Any, *args: Any, **kwargs: Any) -> None:
+        """Execute a command by name.
+
+        Args:
+            name: Command identifier
+            app_instance: Application instance
+            args: Variable positional arguments
+            kwargs: Variable keyword arguments
+
+        Raises:
+            KeyError: If command is not registered
+        """
+        if name not in self._commands:
+            logger.warning(f"Unknown command: {name}")
+            self.debug_logger.warning("Commands", f"Unknown command: {name}")
+            raise KeyError(f"Command '{name}' not registered")
+
+        self.debug_logger.info("Commands", f"Executing command: {name}")
+        self._commands[name].execute(app_instance, *args, **kwargs)
+
+    def get_command_names(self) -> List[str]:
+        """Get list of all registered command names.
+
+        Returns:
+            List of command names
+        """
+        return list(self._commands.keys())
+
+    def is_registered(self, name: str) -> bool:
+        """Check if command is registered.
+
+        Args:
+            name: Command identifier
+
+        Returns:
+            True if command is registered
+        """
+        return name in self._commands
+
+
+def _run_network_cmd(
+    app_instance: Any,
+    func: Callable,
+    success_msg_func: Optional[Callable[[Any], Optional[str]]] = None,
+) -> None:
+    """Run a network command in background thread.
+
+    Args:
+        app_instance: Application instance
+        func: Network function to call
+        success_msg_func: Optional function to generate success message from result
+    """
+
+    def _worker() -> None:
+        try:
+            result = app_instance.safe_network_call(func)
+            if result is not None and success_msg_func:
+                msg = success_msg_func(result)
+                if msg:
+                    app_instance.call_from_thread(app_instance.notify, msg)
+            # Force update playback after user command
+            app_instance.call_from_thread(app_instance.update_now_playing, force=True)
+        except Exception as e:
+            logger.error(f"Network command failed: {e}")
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
+# Command Implementations
+
+
+class PlayPauseCommand(Command):
+    """Toggle play/pause playback."""
+
+    def execute(self, app_instance: Any, *args: Any, **kwargs: Any) -> None:
+        network = Container.resolve(SpotifyNetwork)
+        _run_network_cmd(
+            app_instance,
+            network.toggle_play_pause,
+            lambda r: "Playing" if r else "Paused",
+        )
+
+
+class NextTrackCommand(Command):
+    """Skip to next track."""
+
+    def execute(self, app_instance: Any, *args: Any, **kwargs: Any) -> None:
+        network = Container.resolve(SpotifyNetwork)
+        _run_network_cmd(app_instance, network.next_track, lambda r: "Next track")
+
+
+class PrevTrackCommand(Command):
+    """Go to previous track."""
+
+    def execute(self, app_instance: Any, *args: Any, **kwargs: Any) -> None:
+        network = Container.resolve(SpotifyNetwork)
+        _run_network_cmd(app_instance, network.prev_track, lambda r: "Previous track")
+
+
+class ToggleShuffleCommand(Command):
+    """Toggle shuffle state."""
+
+    def execute(self, app_instance: Any, *args: Any, **kwargs: Any) -> None:
+        network = Container.resolve(SpotifyNetwork)
+        _run_network_cmd(
+            app_instance,
+            network.toggle_shuffle,
+            lambda r: f"Shuffle {'On' if r else 'Off'}",
+        )
+
+
+class CycleRepeatCommand(Command):
+    """Cycle through repeat states."""
+
+    def execute(self, app_instance: Any, *args: Any, **kwargs: Any) -> None:
+        network = Container.resolve(SpotifyNetwork)
+        _run_network_cmd(
+            app_instance,
+            network.cycle_repeat,
+            lambda r: f"Repeat: {r.capitalize()}" if r else None,
+        )
+
+
+class ShowDeviceCommand(Command):
+    """Show device selector."""
+
+    def execute(self, app_instance: Any, *args: Any, **kwargs: Any) -> None:
+        from src.ui.modals.audio_modals import DeviceSelector
 
         network = Container.resolve(SpotifyNetwork)
         store = Container.resolve(Store)
-        prefs = Container.resolve(UserPreferences)
 
-        # Network commands that should run in the background
-        def _run_network_cmd(func, success_msg_func=None):
-            def _worker():
-                result = app_instance.safe_network_call(func)
-                if result is not None:
-                    if success_msg_func:
-                        msg = success_msg_func(result)
-                        if msg:
-                            app_instance.call_from_thread(app_instance.notify, msg)
-                    app_instance.call_from_thread(app_instance.update_now_playing)
+        def _fetch_devices() -> None:
+            devices_data = app_instance.safe_network_call(network.get_devices)
+            if not devices_data or not devices_data.get("devices"):
+                app_instance.call_from_thread(
+                    app_instance.notify,
+                    "No available devices found",
+                    severity="warning",
+                )
+                return
 
-            threading.Thread(target=_worker, daemon=True).start()
+            devices = devices_data["devices"]
+            active_id = next((d["id"] for d in devices if d["is_active"]), None)
 
-        if action == "play_pause":
-            _run_network_cmd(
-                network.toggle_play_pause, lambda r: "Playing" if r else "Paused"
-            )
-        elif action == "next_track":
-            _run_network_cmd(network.next_track, lambda r: "Next track")
-        elif action == "prev_track":
-            _run_network_cmd(network.prev_track, lambda r: "Previous track")
-        elif action == "toggle_shuffle":
-            _run_network_cmd(
-                network.toggle_shuffle, lambda r: f"Shuffle {'On' if r else 'Off'}"
-            )
-        elif action == "cycle_repeat":
-            _run_network_cmd(
-                network.cycle_repeat,
-                lambda r: f"Repeat: {r.capitalize()}" if r else None,
-            )
-        elif action == "show_device":
-            # Devices fetch is also a network call, but we need the result for the modal
-            def _fetch_devices():
-                devices_data = app_instance.safe_network_call(network.get_devices)
-                if not devices_data or not devices_data.get("devices"):
-                    app_instance.call_from_thread(
-                        app_instance.notify,
-                        "No available devices found",
-                        severity="warning",
-                    )
-                    return
-                devices = devices_data["devices"]
-                active_id = next((d["id"] for d in devices if d["is_active"]), None)
+            def on_device_selected(device_id: Optional[str]) -> None:
+                if device_id:
+                    selected_device = next((d for d in devices if d["id"] == device_id), None)
+                    if selected_device:
+                        store.set("preferred_device_id", device_id)
+                        store.set("preferred_device_name", selected_device["name"])
 
-                def on_device_selected(device_id: str):
-                    if device_id:
-                        selected_device = next(
-                            (d for d in devices if d["id"] == device_id), None
-                        )
-                        if selected_device:
-                            store.set("preferred_device_id", device_id)
-                            store.set("preferred_device_name", selected_device["name"])
-
-                        def _transfer():
+                    def _transfer() -> None:
+                        try:
                             app_instance.safe_network_call(
                                 network.transfer_playback, device_id, force_play=True
                             )
-                            app_instance.call_from_thread(
-                                app_instance.notify, "Switched output."
-                            )
-                            app_instance.call_from_thread(
-                                app_instance.update_now_playing
-                            )
+                            app_instance.call_from_thread(app_instance.notify, "Switched output.")
+                            app_instance.call_from_thread(app_instance.update_now_playing)
+                        except Exception as e:
+                            logger.error(f"Transfer playback failed: {e}")
 
-                        threading.Thread(target=_transfer, daemon=True).start()
+                    threading.Thread(target=_transfer, daemon=True).start()
 
-                app_instance.call_from_thread(
-                    app_instance.push_screen,
-                    DeviceSelector(devices, active_id),
-                    on_device_selected,
+            app_instance.call_from_thread(
+                app_instance.push_screen,
+                DeviceSelector(devices, active_id),
+                on_device_selected,
+            )
+
+        threading.Thread(target=_fetch_devices, daemon=True).start()
+
+
+class ShowAudioCommand(Command):
+    """Show audio configuration selector."""
+
+    def execute(self, app_instance: Any, *args: Any, **kwargs: Any) -> None:
+        from src.ui.modals.audio_modals import AudioConfigSelector
+
+        network = Container.resolve(SpotifyNetwork)
+        prefs = Container.resolve(UserPreferences)
+
+        def on_config_selected(new_config: Optional[dict]) -> None:
+            if new_config:
+                prefs.audio_config.update(new_config)
+                app_instance.local_player.stop()
+                token = network.get_access_token()
+                app_instance.local_player.start(prefs.audio_config, access_token=token)
+                app_instance.notify(
+                    f"Backend switched to {new_config['backend']}. Restarting player..."
                 )
 
-            threading.Thread(target=_fetch_devices, daemon=True).start()
+        app_instance.push_screen(AudioConfigSelector(prefs.audio_config), on_config_selected)
 
-        elif action == "show_audio":
 
-            def on_config_selected(new_config: dict):
-                if new_config:
-                    prefs.audio_config.update(new_config)
-                    app_instance.local_player.stop()
-                    token = network.get_access_token()
-                    app_instance.local_player.start(
-                        prefs.audio_config, access_token=token
-                    )
-                    app_instance.notify(
-                        f"Backend switched to {new_config['backend']}. Restarting player..."
-                    )
+class ThemeSelectorCommand(Command):
+    """Open theme selector."""
 
-            app_instance.push_screen(
-                AudioConfigSelector(prefs.audio_config), on_config_selected
-            )
-        elif action == "theme_selector":
+    def execute(self, app_instance: Any, *args: Any, **kwargs: Any) -> None:
+        from src.ui.modals.theme_selector import ThemeSelector
 
-            def on_theme_selected(theme_name: str):
-                if theme_name:
-                    prefs.save_theme(theme_name)
-                    app_instance.apply_theme(theme_name)
-                    app_instance.notify(f"Theme '{theme_name}' applied.")
+        prefs = Container.resolve(UserPreferences)
 
-            app_instance.push_screen(ThemeSelector(prefs.theme), on_theme_selected)
-        elif action == "command_prompt":
-            app_instance.push_screen(CommandPrompt())
-        elif action == "search_prompt":
-            app_instance.push_screen(TelescopePrompt())
-        elif action == "toggle_sidebar":
+        def on_theme_selected(theme_name: Optional[str]) -> None:
+            if theme_name:
+                prefs.save_theme(theme_name)
+                app_instance.apply_theme(theme_name)
+                app_instance.notify(f"Theme '{theme_name}' applied.")
+
+        app_instance.push_screen(ThemeSelector(prefs.theme), on_theme_selected)
+
+
+class CommandPromptCommand(Command):
+    """Open command prompt."""
+
+    def execute(self, app_instance: Any, *args: Any, **kwargs: Any) -> None:
+        from src.ui.modals.command_prompt import CommandPrompt
+
+        app_instance.push_screen(CommandPrompt())
+
+
+class SearchPromptCommand(Command):
+    """Open search/telescope."""
+
+    def execute(self, app_instance: Any, *args: Any, **kwargs: Any) -> None:
+        from src.ui.modals.telescope import TelescopePrompt
+
+        app_instance.push_screen(TelescopePrompt())
+
+
+class ToggleSidebarCommand(Command):
+    """Toggle sidebar visibility."""
+
+    def execute(self, app_instance: Any, *args: Any, **kwargs: Any) -> None:
+        try:
             sidebar = app_instance.query_one("#sidebar")
             sidebar.display = not sidebar.display
             if not sidebar.display:
                 app_instance.query_one("#track-list").focus()
-        elif action == "refresh":
+        except Exception as e:
+            logger.error(f"Toggle sidebar failed: {e}")
+
+
+class RefreshCommand(Command):
+    """Refresh application data."""
+
+    def execute(self, app_instance: Any, *args: Any, **kwargs: Any) -> None:
+        try:
             app_instance.refresh_data()
             app_instance.update_now_playing()
             app_instance.notify("Refreshed")
-        elif action == "logout":
-            from src.ui.modals.confirmation import ConfirmationModal
+        except Exception as e:
+            logger.error(f"Refresh failed: {e}")
 
-            def on_confirm(confirmed: bool):
-                if confirmed:
-                    from src.hooks.useLogout import useLogout
 
-                    useLogout(app_instance)
+class RestartDaemonCommand(Command):
+    """Restart playback daemon."""
 
-            app_instance.push_screen(
-                ConfirmationModal(
-                    "Are you sure you want to logout and clear all sessions?"
-                ),
-                on_confirm,
-            )
-        elif action == "health":
-            from src.hooks.useHealthCheck import useHealthCheck
-
-            useHealthCheck(app_instance)
-        elif action == "restart_daemon":
-            from src.network.local_player import LocalPlayer
-
+    def execute(self, app_instance: Any, *args: Any, **kwargs: Any) -> None:
+        network = Container.resolve(SpotifyNetwork)
+        try:
             player = Container.resolve(LocalPlayer)
             token = network.get_access_token()
             player.restart(access_token=token)
             app_instance.notify("Restarted playback player.")
+        except Exception as e:
+            logger.error(f"Restart daemon failed: {e}")
 
-        elif action == "quit":
-            app_instance.action_quit()
-        else:
+
+class LogoutCommand(Command):
+    """Logout and clear sessions."""
+
+    def execute(self, app_instance: Any, *args: Any, **kwargs: Any) -> None:
+        from src.ui.modals.confirmation import ConfirmationModal
+
+        def on_confirm(confirmed: bool) -> None:
+            if confirmed:
+                logout(app_instance)
+
+        app_instance.push_screen(
+            ConfirmationModal("Are you sure you want to logout and clear all sessions?"),
+            on_confirm,
+        )
+
+
+class HealthCheckCommand(Command):
+    """Run health check."""
+
+    def execute(self, app_instance: Any, *args: Any, **kwargs: Any) -> None:
+        perform_health_check(app_instance)
+
+
+class QuitCommand(Command):
+    """Quit the application."""
+
+    def execute(self, app_instance: Any, *args: Any, **kwargs: Any) -> None:
+        app_instance.action_quit()
+
+
+class CommandService:
+    """Service for executing commands.
+
+    Uses Command pattern with registry for maintainable command handling.
+    """
+
+    def __init__(self) -> None:
+        self.registry = CommandRegistry()
+        self._register_default_commands()
+
+    def _register_default_commands(self) -> None:
+        """Register all default commands."""
+        commands: List[tuple[str, Command]] = [
+            ("play_pause", PlayPauseCommand()),
+            ("next_track", NextTrackCommand()),
+            ("prev_track", PrevTrackCommand()),
+            ("toggle_shuffle", ToggleShuffleCommand()),
+            ("cycle_repeat", CycleRepeatCommand()),
+            ("show_device", ShowDeviceCommand()),
+            ("show_audio", ShowAudioCommand()),
+            ("toggle_sidebar", ToggleSidebarCommand()),
+            ("refresh", RefreshCommand()),
+            ("restart_daemon", RestartDaemonCommand()),
+            ("logout", LogoutCommand()),
+            ("health", HealthCheckCommand()),
+            ("theme_selector", ThemeSelectorCommand()),
+            ("command_prompt", CommandPromptCommand()),
+            ("search_prompt", SearchPromptCommand()),
+            ("quit", QuitCommand()),
+        ]
+
+        for name, command in commands:
+            self.registry.register(name, command)
+
+    def execute(self, action: str, app_instance: Any) -> None:
+        """Execute a command by action name.
+
+        Args:
+            action: Command identifier
+            app_instance: Application instance
+        """
+        try:
+            self.registry.execute(action, app_instance)
+        except KeyError:
             app_instance.notify(f"Unknown action: {action}", severity="warning")
+            logger.warning(f"Attempted to execute unknown action: {action}")
+
+    def get_available_commands(self) -> List[str]:
+        """Get list of available command names.
+
+        Returns:
+            List of command identifiers
+        """
+        return self.registry.get_command_names()
+
+
+__all__ = [
+    "Command",
+    "CommandRegistry",
+    "CommandService",
+]

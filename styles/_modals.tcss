@@ -93,12 +93,102 @@ CommandPrompt {
     border: round $primary;
 }
 
-#app-logs {
-    width: 80%;
-    height: 80%;
+LogModal {
+    align: center middle;
+    background: rgba(17, 17, 27, 0.9);
+}
+
+#debug-tabs {
+    width: 90%;
+    height: 90%;
+    background: $surface;
+    border: double $accent;
+    padding: 0;
+}
+
+#logs-filter-bar {
+    height: 3;
     background: $background;
-    border: round $primary;
+    padding: 0 1;
+    border-bottom: solid $panel;
+}
+
+#logs-filter-input {
+    width: 1fr;
+    border: none;
+    background: transparent;
+}
+
+#logs-filter-input.-insert-mode {
+    background: $surface;
+    border: tall $primary;
+}
+
+.filter-btn {
+    min-width: 8;
+    margin-left: 1;
+    height: 1;
+    border: none;
+    background: $panel;
+}
+
+.filter-btn.active {
+    background: $primary;
+    color: $background;
+    text-style: bold;
+}
+
+#app-logs, #player-logs {
+    height: 1fr;
+    background: $background;
+    padding: 0 1;
+}
+
+#network-container {
+    height: 1fr;
+    background: $background;
+}
+
+#network-list-side {
+    width: 40%;
+    border-right: solid $panel;
+}
+
+#network-detail-side {
+    width: 60%;
     padding: 1;
+}
+
+#network-list {
+    background: transparent;
+    border: none;
+}
+
+#network-details {
+    padding: 1;
+    background: $surface;
+    border: round $panel;
+}
+
+#perf-list {
+    background: transparent;
+    border: none;
+}
+
+#settings-buttons {
+    height: 3;
+    padding: 1;
+}
+
+#settings-buttons Button {
+    margin-right: 2;
+}
+
+#settings-info {
+    padding: 2;
+    background: $background;
+    border: round $panel;
+    margin: 1;
 }
 
 ToastRack {

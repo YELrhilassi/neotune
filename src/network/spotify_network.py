@@ -1,131 +1,305 @@
+"""Spotify API network layer with authentication and playback control."""
+
+import uuid
+from typing import Optional, List, Dict, Any
+import time
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
-from src.config.client_config import ClientConfiguration
-from typing import Optional, List, Dict, Any
+from spotipy.exceptions import SpotifyException
+from src.core.logging_config import get_logger
+from src.core.debug_logger import DebugLogger
+from src.core.cache import CacheStore
+from src.core.constants import (
+    SpotifyScopes,
+    PlayerSettings,
+    ServerSettings,
+    CategoryMappings,
+)
+
+logger = get_logger("spotify_network")
 
 
 class SpotifyNetwork:
-    _auth_manager: Optional[SpotifyOAuth] = (
-        None  # Keep auth_manager as a class-level variable to maintain token state
-    )
+    """Handles all Spotify API interactions including authentication and playback."""
 
-    def __init__(self, config: ClientConfiguration):
+    def __init__(self, config):
+        """Initialize SpotifyNetwork with configuration.
+
+        Args:
+            config: ClientConfiguration instance with credentials
+        """
         self.config = config
+        self._auth_manager: Optional[SpotifyOAuth] = None
         self.sp: Optional[spotipy.Spotify] = None
-        self.setup_auth()
+        self._debug = DebugLogger()
+        self._cache = CacheStore()
+        self._setup_auth()
 
-    def setup_auth(self):
+    def _setup_auth(self) -> None:
+        """Initialize authentication manager."""
         if not self.config.is_valid():
+            logger.warning("Cannot setup auth: invalid configuration")
             return
 
-        scope = "user-read-playback-state,user-modify-playback-state,playlist-read-private,user-read-currently-playing,user-library-read,user-read-recently-played"
-        if not SpotifyNetwork._auth_manager:
-            SpotifyNetwork._auth_manager = SpotifyOAuth(
+        if self._auth_manager is None:
+            self._auth_manager = SpotifyOAuth(
                 client_id=self.config.client_id,
                 client_secret=self.config.client_secret,
                 redirect_uri=self.config.redirect_uri,
-                scope=scope,
+                scope=",".join(SpotifyScopes.SCOPES),
                 open_browser=False,
             )
 
-        mgr = SpotifyNetwork._auth_manager
-        if self.sp is None and mgr:
-            token_info = mgr.get_cached_token()
+        if self.sp is None and self._auth_manager:
+            token_info = self._auth_manager.get_cached_token()
             if token_info:
-                self.sp = spotipy.Spotify(auth_manager=mgr)
+                self.sp = spotipy.Spotify(auth_manager=self._auth_manager)
             else:
-                self.sp = spotipy.Spotify()  # Unauthenticated instance
+                self.sp = spotipy.Spotify()
 
     def get_auth_url(self) -> str:
-        if not SpotifyNetwork._auth_manager:
-            self.setup_auth()
-        mgr = SpotifyNetwork._auth_manager
-        if mgr:
-            return mgr.get_authorize_url()
+        """Generate OAuth authorization URL.
+
+        Returns:
+            Authorization URL string
+        """
+        if self._auth_manager is None:
+            self._setup_auth()
+
+        if self._auth_manager:
+            return self._auth_manager.get_authorize_url()
         return ""
 
     def complete_login(self, response_url: str) -> bool:
-        if not SpotifyNetwork._auth_manager:
-            self.setup_auth()
+        """Complete OAuth flow with response URL.
 
-        mgr = SpotifyNetwork._auth_manager
-        if not mgr:
+        Args:
+            response_url: Full callback URL with authorization code
+
+        Returns:
+            True if authentication successful, False otherwise
+        """
+        if self._auth_manager is None:
+            self._setup_auth()
+
+        if not self._auth_manager:
+            logger.error("Cannot complete login: auth manager not initialized")
             return False
 
-        # Extract code from URL and get token
-        code = mgr.parse_response_code(response_url)
-        token = mgr.get_access_token(code, as_dict=False)
-        if token:
-            self.sp = spotipy.Spotify(auth_manager=mgr)
-            return True
+        try:
+            code = self._auth_manager.parse_response_code(response_url)
+            token = self._auth_manager.get_access_token(code, as_dict=False)
+            if token:
+                self.sp = spotipy.Spotify(auth_manager=self._auth_manager)
+                self._debug.info("SpotifyNetwork", "Login completed successfully")
+                logger.info("Login completed successfully")
+                return True
+        except Exception as e:
+            logger.error(f"Failed to complete login: {e}")
+
         return False
 
     def is_authenticated(self) -> bool:
-        mgr = SpotifyNetwork._auth_manager
-        if not mgr:
+        """Check if user is authenticated and token is valid.
+
+        Returns:
+            True if authenticated with valid token
+        """
+        if self._auth_manager is None:
             return False
 
-        token_info = mgr.get_cached_token()
+        token_info = self._auth_manager.get_cached_token()
         if not token_info:
             return False
 
-        if mgr.is_token_expired(token_info):
+        if self._auth_manager.is_token_expired(token_info):
             try:
-                # Attempt silent refresh
-                token_info = mgr.refresh_access_token(token_info["refresh_token"])
-            except Exception:
+                self._auth_manager.refresh_access_token(token_info["refresh_token"])
+            except Exception as e:
+                logger.error(f"Token refresh failed: {e}")
                 return False
 
-        if not token_info:
-            return False
-
         if not self.sp or not getattr(self.sp, "auth_manager", None):
-            self.sp = spotipy.Spotify(auth_manager=mgr)
+            self.sp = spotipy.Spotify(auth_manager=self._auth_manager)
 
         return True
 
-    def reauthenticate(self):
-        # Force a re-authentication by clearing the cached token
-        SpotifyNetwork._auth_manager = None
-        self.setup_auth()
+    def reauthenticate(self) -> None:
+        """Force re-authentication by clearing cached token."""
+        self._auth_manager = None
+        self._setup_auth()
+        self._debug.info("SpotifyNetwork", "Re-authentication initiated")
+        logger.info("Re-authentication initiated")
 
     def get_access_token(self) -> Optional[str]:
-        mgr = SpotifyNetwork._auth_manager
-        if not mgr:
+        """Get current access token.
+
+        Returns:
+            Access token string or None if not authenticated
+        """
+        if self._auth_manager is None:
             return None
-        token_info = mgr.get_cached_token()
+
+        token_info = self._auth_manager.get_cached_token()
         if token_info:
             return token_info.get("access_token")
         return None
 
+    def _get_fallback_device_id(self) -> Optional[str]:
+        """Find suitable playback device with fallback logic.
+
+        Returns:
+            Device ID string or None if no device available
+        """
+        for attempt in range(5):
+            devices_data = self.get_devices()
+            if devices_data and devices_data.get("devices"):
+                devices = devices_data["devices"]
+
+                # Priority 1: Look for our specific player
+                for device in devices:
+                    if device.get("name") == PlayerSettings.DEVICE_NAME:
+                        return device.get("id")
+
+                # Priority 2: Look for any active device
+                for device in devices:
+                    if device.get("is_active"):
+                        return device.get("id")
+
+                # Priority 3: Use first available device
+                return devices[0].get("id")
+
+            time.sleep(1.5)
+
+        logger.warning("No fallback device found after retries")
+        return None
+
+    def _execute_with_fallback(self, operation: callable, *args, **kwargs) -> Any:
+        """Execute Spotify operation with automatic device fallback.
+
+        Args:
+            operation: Spotify method to call
+            *args: Positional arguments for operation
+            **kwargs: Keyword arguments for operation
+
+        Returns:
+            Result of operation or None on failure
+        """
+        try:
+            return operation(*args, **kwargs)
+        except SpotifyException as e:
+            if e.http_status == 404 and "No active device" in str(e):
+                device_id = self._get_fallback_device_id()
+                if device_id:
+                    kwargs["device_id"] = device_id
+                    return operation(*args, **kwargs)
+            raise
+
+    def _safe_api_call(
+        self,
+        func: callable,
+        *args,
+        default_return: Any = None,
+        track_name: Optional[str] = None,
+        cache_ttl: Optional[int] = None,
+        **kwargs,
+    ) -> Any:
+        """Execute API call with error handling, network tracking, and optional caching.
+
+        Args:
+            func: API function to call
+            *args: Positional arguments
+            default_return: Value to return on failure
+            track_name: Optional name for network tracking
+            cache_ttl: Optional TTL in seconds for caching the result
+            **kwargs: Keyword arguments
+
+        Returns:
+            API response or empty default on failure
+        """
+        if not self.sp:
+            return default_return
+
+        endpoint = track_name or func.__name__
+
+        # 1. Check Cache
+        if cache_ttl is not None:
+            cache_key = f"api:{endpoint}:{args}:{kwargs}"
+            cached_val = self._cache.get(cache_key)
+            if cached_val is not None:
+                self._debug.debug("SpotifyNetwork", f"Cache hit: {endpoint}")
+                return cached_val
+
+        # 2. Prepare for Tracking
+        request_id = str(uuid.uuid4())[:8]
+        self._debug.network_start(request_id, "API", endpoint, dict(kwargs) if kwargs else None)
+        start_time = time.time()
+
+        try:
+            result = func(*args, **kwargs)
+            duration_ms = (time.time() - start_time) * 1000
+
+            # 3. Track success
+            self._debug.network_end(request_id, status_code=200)
+            self._debug.track_performance(endpoint, duration_ms)
+
+            # 4. Save to Cache
+            if cache_ttl is not None:
+                cache_key = f"api:{endpoint}:{args}:{kwargs}"
+                self._cache.set(cache_key, result, ttl=cache_ttl)
+
+            return result
+        except SpotifyException as e:
+            duration_ms = (time.time() - start_time) * 1000
+            logger.warning(f"Spotify API error: {e}")
+
+            # Track error
+            self._debug.network_end(
+                request_id, error=str(e), status_code=getattr(e, "http_status", None)
+            )
+            self._debug.track_performance(endpoint, duration_ms)
+
+            return default_return
+        except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
+            logger.error(f"Unexpected error in API call: {e}")
+
+            # Track error
+            self._debug.network_end(request_id, error=str(e))
+            self._debug.track_performance(endpoint, duration_ms)
+
+            return default_return
+
+    # User Profile Methods
     def get_user_profile(self) -> Optional[Dict[str, Any]]:
-        sp = self.sp
-        if not sp:
-            return None
-        try:
-            return sp.current_user()
-        except Exception:
-            return None
+        """Fetch current user profile.
 
-    def get_liked_songs(self, limit=50) -> List[Dict[str, Any]]:
-        sp = self.sp
-        if not sp:
-            return []
-        try:
-            results = sp.current_user_saved_tracks(limit=limit)
-            return results.get("items", []) if results else []
-        except Exception:
-            return []
+        Returns:
+            User profile dictionary or None
+        """
+        return self._safe_api_call(self.sp.current_user, cache_ttl=3600)
 
+    def get_liked_songs(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Fetch user's saved tracks.
+
+        Args:
+            limit: Maximum number of tracks to fetch
+
+        Returns:
+            List of saved track items
+        """
+        result = self._safe_api_call(
+            self.sp.current_user_saved_tracks, limit=limit, default_return={}, cache_ttl=60
+        )
+        return result.get("items", []) if result else []
+
+    # Browse Methods
     def get_browse_metadata(self) -> Dict[str, Any]:
-        """
-        Fetches metadata for all available browse categories and featured items.
-        Handles regional 404s by providing safe fallbacks.
-        """
-        sp = self.sp
-        if not sp:
-            return {}
+        """Fetch browse categories and featured playlists.
 
+        Returns:
+            Dictionary with categories, featured playlists, and user profile
+        """
         metadata = {
             "categories": [],
             "featured_message": "Recommended",
@@ -133,459 +307,364 @@ class SpotifyNetwork:
             "user_profile": None,
         }
 
+        if not self.sp:
+            return metadata
+
         try:
-            # 1. User Profile for personalization
             profile = self.get_user_profile()
             metadata["user_profile"] = profile
             country = profile.get("country") if profile else None
 
-            # 2. Fetch available categories
+            # Fetch categories
             try:
-                categories_data = sp.categories(country=country, limit=50)
+                categories_data = self._safe_api_call(
+                    self.sp.categories, country=country, limit=50, track_name="categories"
+                )
                 if categories_data:
-                    metadata["categories"] = categories_data.get("categories", {}).get(
-                        "items", []
-                    )
-            except Exception:
-                pass
+                    metadata["categories"] = categories_data.get("categories", {}).get("items", [])
+            except Exception as e:
+                logger.debug(f"Categories fetch failed: {e}")
 
-            # 3. Fetch featured playlists (Handle 404 gracefully)
+            # Fetch featured playlists
             try:
-                featured = sp.featured_playlists(country=country, limit=20)
+                featured = self._safe_api_call(
+                    self.sp.featured_playlists,
+                    country=country,
+                    limit=20,
+                    track_name="featured_playlists",
+                )
                 if featured:
                     metadata["featured_message"] = featured.get("message", "Featured")
-                    metadata["featured_playlists"] = featured.get("playlists", {}).get(
-                        "items", []
-                    )
+                    metadata["featured_playlists"] = featured.get("playlists", {}).get("items", [])
             except Exception:
-                # Fallback: Search for "Featured" playlists if the endpoint is disabled
+                # Fallback to search
                 try:
-                    search_res = sp.search(q="Featured", type="playlist", limit=10)
+                    search_res = self._safe_api_call(
+                        self.sp.search, q="Featured", type="playlist", limit=10, track_name="search"
+                    )
                     if search_res and search_res.get("playlists"):
-                        metadata["featured_playlists"] = search_res["playlists"].get(
-                            "items", []
-                        )
-                except Exception:
-                    pass
+                        metadata["featured_playlists"] = search_res["playlists"].get("items", [])
+                except Exception as e:
+                    logger.debug(f"Featured search fallback failed: {e}")
 
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Error fetching browse metadata: {e}")
 
         return metadata
 
-    def get_playlists_by_category(
-        self, category_id: str, limit=50
-    ) -> List[Dict[str, Any]]:
+    def get_playlists_by_category(self, category_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Fetch playlists for a browse category with multi-stage fallback.
+
+        Args:
+            category_id: Category identifier
+            limit: Maximum number of playlists to fetch
+
+        Returns:
+            List of playlist dictionaries
         """
-        Fetches playlists for a category. Uses a multi-stage fallback since browse
-        endpoints (category_playlists) are highly unstable and regionalized.
-        """
-        sp = self.sp
-        if not sp:
+        if not self.sp:
             return []
 
         profile = self.get_user_profile()
         country = profile.get("country") if profile else None
 
-        # 1. Attempt standard browse endpoint (Try WITH and WITHOUT country)
+        # Attempt 1: Try official category_playlists endpoint
         try:
-            results = sp.category_playlists(category_id, country=country, limit=limit)
+            results = self._safe_api_call(
+                self.sp.category_playlists,
+                category_id,
+                country=country,
+                limit=limit,
+                track_name="category_playlists",
+            )
             if results and results.get("playlists"):
                 items = results["playlists"].get("items", [])
                 if items:
-                    return [i for i in items if i]
+                    return [item for item in items if item]
         except Exception:
-            try:
-                results = sp.category_playlists(category_id, limit=limit)
-                if results and results.get("playlists"):
-                    items = results["playlists"].get("items", [])
-                    if items:
-                        return [i for i in items if i]
-            except Exception:
-                pass
+            pass
 
-        # 2. Specialized Search Fallback (The most robust way for "Sections")
-        # We try to map certain category IDs to high-quality search queries
-        query_map = {
-            "made-for-you": "Mix owner:spotify",
-            "top_mixes": "Top Mix owner:spotify",
-            "discover": "Discover owner:spotify",
-            "0JQ5DAqbMKFHOzu9Kzcc9M": "Mix owner:spotify",  # Made For You
-            "0JQ5DAt0tbjZptfcdMSKl3": "Mix owner:spotify",  # Made For You (Alternate ID)
-        }
+        # Attempt 2: Try without country parameter
+        try:
+            results = self._safe_api_call(
+                self.sp.category_playlists,
+                category_id,
+                limit=limit,
+                track_name="category_playlists_no_country",
+            )
+            if results and results.get("playlists"):
+                items = results["playlists"].get("items", [])
+                if items:
+                    return [item for item in items if item]
+        except Exception:
+            pass
 
-        query = query_map.get(category_id, category_id)
-        if "owner:spotify" not in query and category_id not in [
-            "pop",
-            "rock",
-            "charts",
-        ]:
-            # For general categories, search for spotify-owned playlists to match "Official" feel
+        # Attempt 3: Search fallback with query mapping
+        query = CategoryMappings.QUERY_MAP.get(category_id, category_id)
+        if "owner:spotify" not in query and category_id not in ["pop", "rock", "charts"]:
             query = f"{query} owner:spotify"
 
         try:
-            res = sp.search(q=query, type="playlist", limit=limit)
+            res = self._safe_api_call(
+                self.sp.search, q=query, type="playlist", limit=limit, track_name="category_search"
+            )
             if res and res.get("playlists"):
                 items = res["playlists"].get("items", [])
                 if items:
-                    return [i for i in items if i]
-        except Exception:
-            pass
+                    return [item for item in items if item]
+        except Exception as e:
+            logger.warning(f"Search fallback failed for category {category_id}: {e}")
 
         return []
 
-        # 1. Get metadata for name-based search if category_id is a slug
-        # But first, try to find the category name from our store or cache if possible?
-        # Actually, let's try the direct ID first.
+    def get_playlists(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Fetch user's playlists.
 
-        try:
-            profile = self.get_user_profile()
-            country = profile.get("country") if profile else None
+        Args:
+            limit: Maximum number of playlists to fetch
 
-            # Try category_playlists (highly likely to 404 based on tests)
-            results = sp.category_playlists(category_id, country=country, limit=limit)
-            if results and results.get("playlists"):
-                items = results["playlists"].get("items", [])
-                if items:
-                    return [i for i in items if i]
-        except Exception:
-            pass
+        Returns:
+            List of playlist dictionaries
+        """
+        result = self._safe_api_call(
+            self.sp.current_user_playlists, limit=limit, default_return={}, cache_ttl=300
+        )
+        return result.get("items", []) if result else []
 
-        # 2. Search Fallback (The most reliable way now)
-        try:
-            # We try searching for the category ID as a query
-            # Often the ID is descriptive (e.g. 'rock', 'pop')
-            query = category_id
-            # If it's a long hex ID, we might want to use the category name,
-            # but we don't have it here. However, search often works on the slug.
-            res = sp.search(q=query, type="playlist", limit=limit)
-            if res and res.get("playlists"):
-                items = res["playlists"].get("items", [])
-                if items:
-                    return [i for i in items if i]
-        except Exception:
-            pass
+    def get_playlist_tracks(self, playlist_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Fetch tracks from a playlist.
 
+        Args:
+            playlist_id: Playlist identifier
+            limit: Maximum number of tracks to fetch
+
+        Returns:
+            List of track items
+        """
+        result = self._safe_api_call(
+            self.sp.playlist_items, playlist_id, limit=limit, default_return={}, cache_ttl=60
+        )
+        return result.get("items", []) if result else []
+
+    def get_album_tracks(self, album_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Fetch tracks from an album.
+
+        Args:
+            album_id: Album identifier
+            limit: Maximum number of tracks to fetch
+
+        Returns:
+            List of track dictionaries
+        """
+        result = self._safe_api_call(
+            self.sp.album_tracks, album_id, limit=limit, default_return={}, cache_ttl=3600
+        )
+        return result.get("items", []) if result else []
+
+    def get_featured_playlists(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """Fetch featured playlists.
+
+        Args:
+            limit: Maximum number of playlists to fetch
+
+        Returns:
+            List of playlist dictionaries
+        """
+        result = self._safe_api_call(self.sp.featured_playlists, limit=limit, default_return={})
+        if result:
+            return result.get("playlists", {}).get("items", [])
         return []
 
-        # 1. Fetch user profile for country code (essential for browse endpoints)
-        profile = self.get_user_profile()
-        country = profile.get("country") if profile else None
+    def get_recently_played(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Fetch recently played tracks.
 
-        try:
-            # 2. Try official category playlists endpoint
-            results = sp.category_playlists(category_id, country=country, limit=limit)
-            if results and results.get("playlists"):
-                items = results["playlists"].get("items", [])
-                if items:
-                    return [i for i in items if i]  # Filter out None entries
-        except Exception:
-            pass
+        Args:
+            limit: Maximum number of tracks to fetch
 
-        # 3. Fallback: Search for playlists with the category name/ID
-        try:
-            # If it's a known ID format like 0JQ5D..., it might not search well by name.
-            # But usually these are mapped to categories.
-            # We'll try a generic search.
-            res = sp.search(q=category_id, type="playlist", limit=limit)
-            if res and res.get("playlists"):
-                items = res["playlists"].get("items", [])
-                if items:
-                    return [i for i in items if i]
-        except Exception:
-            pass
-
-        return []
-
-        try:
-            # 1. Fetch using standard browse endpoint
-            profile = self.get_user_profile()
-            country = profile.get("country") if profile else None
-
-            results = sp.category_playlists(category_id, country=country, limit=limit)
-            if results and "playlists" in results:
-                return results["playlists"].get("items", [])
-            return []
-        except spotipy.exceptions.SpotifyException as e:
-            # If 404 or other error, fallback to search.
-            # Many IDs returned by categories list are not valid for category_playlists in all regions.
-            if e.http_status in [404, 400]:
-                try:
-                    # Try searching for the category ID as a tag or query
-                    search_res = sp.search(
-                        q=f"playlist:{category_id}", type="playlist", limit=limit
-                    )
-                    if not search_res or not search_res.get("playlists"):
-                        search_res = sp.search(
-                            q=category_id, type="playlist", limit=limit
-                        )
-
-                    if search_res and "playlists" in search_res:
-                        return search_res["playlists"].get("items", [])
-                except Exception:
-                    pass
-            return []
-        except Exception:
-            return []
-
-    def get_playlists(self, limit=50) -> List[Dict[str, Any]]:
-        sp = self.sp
-        if not sp:
-            return []
-        try:
-            results = sp.current_user_playlists(limit=limit)
-            return results.get("items", []) if results else []
-        except Exception:
-            return []
-
-    def get_playlist_tracks(self, playlist_id: str, limit=50) -> List[Dict[str, Any]]:
-        sp = self.sp
-        if not sp:
-            return []
-        try:
-            results = sp.playlist_items(playlist_id, limit=limit)
-            return results.get("items", []) if results else []
-        except Exception:
-            return []
-
-    def get_album_tracks(self, album_id: str, limit=50) -> List[Dict[str, Any]]:
-        sp = self.sp
-        if not sp:
-            return []
-        try:
-            results = sp.album_tracks(album_id, limit=limit)
-            return results.get("items", []) if results else []
-        except Exception:
-            return []
-
-    def get_featured_playlists(self, limit=20) -> List[Dict[str, Any]]:
-        sp = self.sp
-        if not sp:
-            return []
-        try:
-            results = sp.featured_playlists(limit=limit)
-            return results.get("playlists", {}).get("items", []) if results else []
-        except Exception:
-            return []
-
-    def get_recently_played(self, limit=50) -> List[Dict[str, Any]]:
-        sp = self.sp
-        if not sp:
-            return []
-        try:
-            results = sp.current_user_recently_played(limit=limit)
-            return results.get("items", []) if results else []
-        except Exception:
-            return []
+        Returns:
+            List of recently played items
+        """
+        result = self._safe_api_call(
+            self.sp.current_user_recently_played, limit=limit, default_return={}
+        )
+        return result.get("items", []) if result else []
 
     def search(
-        self, query: str, qtype="track,playlist,album", limit=50
+        self, query: str, qtype: str = "track,playlist,album", limit: int = 50
     ) -> List[Dict[str, Any]]:
-        sp = self.sp
-        if not sp:
-            return []
-        try:
-            results = sp.search(q=query, type=qtype, limit=limit)
-            if not results:
-                return []
+        """Search Spotify catalog.
 
-            items = []
-            if "track" in qtype and results.get("tracks"):
-                for t in results.get("tracks", {}).get("items", []):
-                    items.append({"_qtype": "track", "data": t})
-            if "album" in qtype and results.get("albums"):
-                for a in results.get("albums", {}).get("items", []):
-                    items.append({"_qtype": "album", "data": a})
-            if "playlist" in qtype and results.get("playlists"):
-                for p in results.get("playlists", {}).get("items", []):
-                    items.append({"_qtype": "playlist", "data": p})
-            return items
-        except Exception:
+        Args:
+            query: Search query string
+            qtype: Comma-separated list of types to search
+            limit: Maximum number of results per type
+
+        Returns:
+            List of search results with _qtype markers
+        """
+        result = self._safe_api_call(
+            self.sp.search, q=query, type=qtype, limit=limit, default_return={}
+        )
+
+        if not result:
             return []
 
+        items = []
+        if "track" in qtype and result.get("tracks"):
+            for track in result["tracks"].get("items", []):
+                items.append({"_qtype": "track", "data": track})
+
+        if "album" in qtype and result.get("albums"):
+            for album in result["albums"].get("items", []):
+                items.append({"_qtype": "album", "data": album})
+
+        if "playlist" in qtype and result.get("playlists"):
+            for playlist in result["playlists"].get("items", []):
+                items.append({"_qtype": "playlist", "data": playlist})
+
+        return items
+
+    # Playback Control Methods
     def get_current_playback(self) -> Optional[Dict[str, Any]]:
-        sp = self.sp
-        if not sp:
-            return None
-        try:
-            return sp.current_playback()
-        except Exception:
-            return None
+        """Fetch current playback state.
+
+        Returns:
+            Playback state dictionary or None
+        """
+        return self._safe_api_call(self.sp.current_playback)
 
     def get_devices(self) -> Optional[Dict[str, Any]]:
-        sp = self.sp
-        if not sp:
-            return None
-        try:
-            return sp.devices()
-        except Exception:
-            return None
+        """Fetch available devices.
 
-    def _get_fallback_device_id(self) -> Optional[str]:
-        import time
-
-        # Try a few times to give the local player time to register with Spotify's servers
-        for _ in range(5):
-            devices_data = self.get_devices()
-            if devices_data and devices_data.get("devices"):
-                devices = devices_data["devices"]
-                # 1. Look for our specific TUI player
-                for d in devices:
-                    if d.get("name") == "Spotify TUI Player":
-                        return d.get("id")
-
-                # 2. Look for ANY active device
-                for d in devices:
-                    if d.get("is_active"):
-                        return d.get("id")
-
-                # 3. Fallback to the first available device
-                return devices[0].get("id")
-            time.sleep(1.5)  # Increased sleep to allow librespot to handshaking
-        return None
+        Returns:
+            Devices response dictionary or None
+        """
+        return self._safe_api_call(self.sp.devices)
 
     def play_track(
-        self, track_uri, device_id=None, context_uri=None, offset_position=None
-    ):
-        sp = self.sp
-        if not sp:
+        self,
+        track_uri: Any,
+        device_id: Optional[str] = None,
+        context_uri: Optional[str] = None,
+        offset_position: Optional[int] = None,
+    ) -> None:
+        """Start playback of track(s).
+
+        Args:
+            track_uri: Track URI string or list of URIs
+            device_id: Optional device ID to play on
+            context_uri: Optional context URI (album/playlist)
+            offset_position: Optional offset position in context
+        """
+        if not self.sp:
             return
 
         params = {}
         if device_id:
             params["device_id"] = device_id
-
         if context_uri:
             params["context_uri"] = context_uri
-            if offset_position is not None:
-                params["offset"] = {"position": int(offset_position)}
-            elif track_uri:
-                # Only use uri offset if it's a single track string
-                if isinstance(track_uri, str) and ":track:" in track_uri:
-                    params["offset"] = {"uri": track_uri}
-                elif (
-                    isinstance(track_uri, list)
-                    and track_uri
-                    and ":track:" in track_uri[0]
-                ):
-                    params["offset"] = {"uri": track_uri[0]}
+        if offset_position is not None:
+            params["offset"] = {"position": int(offset_position)}
+
+        # Handle different track_uri types
+        if isinstance(track_uri, str) and ":track:" in track_uri:
+            params["uris"] = [track_uri]
+            params["offset"] = {"uri": track_uri}
         elif isinstance(track_uri, list) and track_uri:
             params["uris"] = track_uri
-            if offset_position is not None:
-                params["offset"] = {"position": int(offset_position)}
-        elif isinstance(track_uri, str) and ":track:" in track_uri:
-            params["uris"] = [track_uri]
+            if ":track:" in track_uri[0]:
+                params["offset"] = {"uri": track_uri[0]}
         elif isinstance(track_uri, str):
             params["context_uri"] = track_uri
 
-        try:
-            sp.start_playback(**params)
-        except spotipy.exceptions.SpotifyException as e:
-            if e.http_status == 404 and "No active device" in str(e):
-                dev_id = self._get_fallback_device_id()
-                if dev_id:
-                    params["device_id"] = dev_id
-                    sp.start_playback(**params)
-                    return
-            raise e
+        # Tracked playback execution
+        self._safe_api_call(self.sp.start_playback, track_name="play_track", **params)
 
-    def transfer_playback(self, device_id: str, force_play=True):
-        sp = self.sp
-        if not sp:
-            return
-        try:
-            sp.transfer_playback(device_id=device_id, force_play=force_play)
-        except Exception:
-            pass
+    def transfer_playback(self, device_id: str, force_play: bool = True) -> None:
+        """Transfer playback to a device.
+
+        Args:
+            device_id: Device ID to transfer to
+            force_play: Whether to force playback after transfer
+        """
+        self._safe_api_call(
+            self.sp.transfer_playback,
+            device_id=device_id,
+            force_play=force_play,
+            track_name="transfer_playback",
+        )
 
     def toggle_play_pause(self) -> bool:
-        sp = self.sp
-        if not sp:
-            return False
+        """Toggle between play and pause.
+
+        Returns:
+            True if now playing, False if paused
+        """
         playback = self.get_current_playback()
-        try:
-            if playback and playback.get("is_playing"):
-                sp.pause_playback()
-                return False
-            else:
-                sp.start_playback()
-                return True
-        except spotipy.exceptions.SpotifyException as e:
-            if e.http_status == 404 and "No active device" in str(e):
-                dev_id = self._get_fallback_device_id()
-                if dev_id:
-                    sp.start_playback(device_id=dev_id)
-                    return True
-            raise e
+        if playback and playback.get("is_playing"):
+            self._safe_api_call(self.sp.pause_playback, track_name="pause_playback")
+            return False
+        else:
+            self._safe_api_call(
+                self._execute_with_fallback,
+                self.sp.start_playback,
+                track_name="play_playback",
+            )
+            return True
 
     def toggle_shuffle(self) -> bool:
-        sp = self.sp
-        if not sp:
-            return False
+        """Toggle shuffle state.
+
+        Returns:
+            True if shuffle is now on, False otherwise
+        """
         playback = self.get_current_playback()
         if playback:
             current_shuffle = playback.get("shuffle_state", False)
-            try:
-                sp.shuffle(state=not current_shuffle)
-                return not current_shuffle
-            except spotipy.exceptions.SpotifyException as e:
-                if e.http_status == 404 and "No active device" in str(e):
-                    dev_id = self._get_fallback_device_id()
-                    if dev_id:
-                        sp.shuffle(state=not current_shuffle, device_id=dev_id)
-                        return not current_shuffle
-                raise e
+            self._safe_api_call(
+                self._execute_with_fallback,
+                self.sp.shuffle,
+                state=not current_shuffle,
+                track_name="toggle_shuffle",
+            )
+            return not current_shuffle
         return False
 
     def cycle_repeat(self) -> str:
-        sp = self.sp
-        if not sp:
-            return "off"
+        """Cycle through repeat states.
+
+        Returns:
+            New repeat state string ("off", "context", or "track")
+        """
+        states = ["off", "context", "track"]
         playback = self.get_current_playback()
+
         if playback:
-            states = ["off", "context", "track"]
             current = playback.get("repeat_state", "off")
             try:
                 next_idx = (states.index(current) + 1) % len(states)
             except ValueError:
                 next_idx = 0
 
-            try:
-                sp.repeat(state=states[next_idx])
-                return states[next_idx]
-            except spotipy.exceptions.SpotifyException as e:
-                if e.http_status == 404 and "No active device" in str(e):
-                    dev_id = self._get_fallback_device_id()
-                    if dev_id:
-                        sp.repeat(state=states[next_idx], device_id=dev_id)
-                        return states[next_idx]
-                raise e
+            self._safe_api_call(
+                self._execute_with_fallback,
+                self.sp.repeat,
+                state=states[next_idx],
+                track_name="cycle_repeat",
+            )
+            return states[next_idx]
+
         return "off"
 
-    def next_track(self):
-        sp = self.sp
-        if not sp:
-            return
-        try:
-            sp.next_track()
-        except spotipy.exceptions.SpotifyException as e:
-            if e.http_status == 404 and "No active device" in str(e):
-                dev_id = self._get_fallback_device_id()
-                if dev_id:
-                    sp.next_track(device_id=dev_id)
-                    return
-            raise e
+    def next_track(self) -> None:
+        """Skip to next track."""
+        self._safe_api_call(
+            self._execute_with_fallback, self.sp.next_track, track_name="next_track"
+        )
 
-    def prev_track(self):
-        sp = self.sp
-        if not sp:
-            return
-        try:
-            sp.previous_track()
-        except spotipy.exceptions.SpotifyException as e:
-            if e.http_status == 404 and "No active device" in str(e):
-                dev_id = self._get_fallback_device_id()
-                if dev_id:
-                    sp.previous_track(device_id=dev_id)
-                    return
-            raise e
+    def prev_track(self) -> None:
+        """Go to previous track."""
+        self._safe_api_call(
+            self._execute_with_fallback, self.sp.previous_track, track_name="prev_track"
+        )
