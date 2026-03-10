@@ -1,6 +1,6 @@
 """Service for discovering new content (search, categories, featured)."""
 
-from typing import List, Dict, Any, Optional
+from typing import Any, Optional
 from src.core.constants import CategoryMappings
 from src.network.base import SpotifyServiceBase
 
@@ -8,8 +8,8 @@ from src.network.base import SpotifyServiceBase
 class DiscoveryService(SpotifyServiceBase):
     """Handles Spotify catalog search and discovery features."""
 
-    def get_categories(self, country: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Fetch available browse categories with validation."""
+    def get_categories(self, country: Optional[str] = None) -> list[dict[str, Any]]:
+        """Fetch available browse categories with validation and 404 suppression."""
         result = self._safe_api_call(
             self.sp.categories,
             country=country,
@@ -17,6 +17,7 @@ class DiscoveryService(SpotifyServiceBase):
             track_name="categories",
             cache_ttl=3600,
             min_interval=300.0,
+            suppress_status_codes=[404],
         )
         if not result:
             return []
@@ -26,7 +27,7 @@ class DiscoveryService(SpotifyServiceBase):
         # Validation: ensure category has id and name
         return [c for c in categories if c and c.get("id") and c.get("name")]
 
-    def get_featured_playlists(self, country: Optional[str] = None) -> Dict[str, Any]:
+    def get_featured_playlists(self, country: Optional[str] = None) -> dict[str, Any]:
         """Fetch featured playlists with 404 suppression."""
         result = self._safe_api_call(
             self.sp.featured_playlists,
@@ -44,7 +45,7 @@ class DiscoveryService(SpotifyServiceBase):
 
     def search(
         self, query: str, types: str = "track,playlist,album", limit: int = 50
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         result = self._safe_api_call(
             self.sp.search, q=query, type=types, limit=limit, track_name="search", cache_ttl=60
         )
@@ -68,7 +69,7 @@ class DiscoveryService(SpotifyServiceBase):
 
     def get_category_playlists(
         self, category_id: str, country: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Fetch playlists for a category with robust fallbacks and 404 handling."""
         # 1. Try official category_playlists endpoint
         for name, params in [

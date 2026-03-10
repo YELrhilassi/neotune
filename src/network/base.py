@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 """Base class for Spotify API services."""
 
 import time
 import uuid
 import threading
 import json
-from typing import Any, Optional, Dict
+from typing import Any, Optional, Callable
 import spotipy
 from spotipy.exceptions import SpotifyException
 from src.core.logging_config import get_logger
@@ -17,7 +19,7 @@ logger = get_logger("spotify_service")
 class SpotifyServiceBase:
     """Base class for Spotify services with shared API call logic."""
 
-    _last_call_times: Dict[str, float] = {}
+    _last_call_times: dict[str, float] = {}
     _call_lock = threading.Lock()
 
     def __init__(self, sp: Optional[spotipy.Spotify] = None):
@@ -31,13 +33,13 @@ class SpotifyServiceBase:
 
     def _safe_api_call(
         self,
-        func: callable,
+        func: Callable,
         *args,
         default_return: Any = None,
         track_name: Optional[str] = None,
         cache_ttl: Optional[int] = None,
         min_interval: Optional[float] = 1.0,  # Prevent spamming the same endpoint
-        suppress_status_codes: Optional[List[int]] = None,
+        suppress_status_codes: Optional[list[int]] = None,
         **kwargs,
     ) -> Any:
         """Execute API call with error handling, tracking, and optional caching.
@@ -77,7 +79,15 @@ class SpotifyServiceBase:
 
         # 2. Prepare for Tracking
         request_id = f"req_{str(uuid.uuid4())[:8]}"
-        self._debug.network_start(request_id, "API", endpoint, dict(kwargs) if kwargs else None)
+
+        # Capture both positional and keyword arguments for debugging
+        tracked_params = {}
+        if args:
+            tracked_params["args"] = args
+        if kwargs:
+            tracked_params.update(kwargs)
+
+        self._debug.network_start(request_id, "API", endpoint, tracked_params)
         start_time = time.time()
 
         try:

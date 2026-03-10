@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime
-from typing import Optional, List, Dict, Any, TYPE_CHECKING
+from typing import Optional, Any, TYPE_CHECKING
 
 from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal
@@ -93,7 +93,10 @@ class DebugModal(BaseModal):
         if not self.is_mounted:
             return
         if self.query_one("#debug-tabs", TabbedContent).active == "tab-network":
-            self.app.call_from_thread(self.query_one("#view-network").refresh_data)
+            from src.ui.modals.debug.tabs import NetworkTab
+
+            view = self.query_one("#view-network", NetworkTab)
+            self.app.call_from_thread(view.refresh_data)
 
     # --- Handlers ---
 
@@ -131,7 +134,9 @@ class DebugModal(BaseModal):
                 b.remove_class("active")
             event.button.add_class("active")
             self.log_level_filter = bid.replace("filter-", "")
-            self.query_one("#view-logs").refresh_data()
+            from src.ui.modals.debug.tabs import LogsTab
+
+            self.query_one("#view-logs", LogsTab).refresh_data()
 
     @on(OptionList.OptionHighlighted, "#network-history-list")
     def on_network_item_selected(self, event: OptionList.OptionHighlighted) -> None:
@@ -164,6 +169,7 @@ class DebugModal(BaseModal):
 
             details.append(f"\n[bold #cba6f7]Request Parameters[/]")
             try:
+                # Capture params accurately
                 params_str = json.dumps(req.params, indent=2, default=str)
                 details.append(f"[dim]{params_str}[/]")
             except:
@@ -180,7 +186,10 @@ class DebugModal(BaseModal):
             if req.error:
                 details.extend([f"\n[bold #f38ba8]Error Details[/]", f"[#f38ba8]{req.error}[/]"])
 
-            pane.update("\n".join(details))
+            formatted_text = "\n".join(details)
+            pane.update(formatted_text)
+            # Store formatted text for copying
+            self._last_formatted_details = formatted_text
 
     # --- Copy Logic ---
     def _copy_all_logs(self):
@@ -196,20 +205,31 @@ class DebugModal(BaseModal):
         )
 
     def _copy_network_detail(self):
-        if self.selected_network_index is not None:
-            reqs = list(reversed(self.debug_svc.get_network_history(limit=50)))
-            if self.selected_network_index < len(reqs):
-                self.app.copy_to_clipboard(
-                    json.dumps(reqs[self.selected_network_index].params, indent=2, default=str)
-                )
+        if hasattr(self, "_last_formatted_details") and self._last_formatted_details:
+            from rich.text import Text
+
+            # Strip markup before copying
+            clean_text = Text.from_markup(self._last_formatted_details).plain
+            self.app.copy_to_clipboard(clean_text)
+        else:
+            self.app.notify("No details selected to copy", severity="warning")
 
     def _copy_perf_stats(self):
         s = self.debug_svc.get_performance_stats()
         self.app.copy_to_clipboard("\n".join([f"{k}: {v['avg_ms']:.1f}ms" for k, v in s.items()]))
 
     def _copy_player_logs(self):
-        # Implementation in PlayerTab can be called or duplicated
-        self.query_one("#view-player").refresh_data()  # Ensure fresh
+        try:
+            from src.network.local_player import LocalPlayer
+            import os
+
+            p = Container.resolve(LocalPlayer)
+            lp = os.path.join(p.cache_dir, "librespot.log")
+            if os.path.exists(lp):
+                with open(lp, "r") as f:
+                    self.app.copy_to_clipboard(f.read())
+        except:
+            pass
 
     # --- Navigation ---
     @on(DebugInput.Navigate)
@@ -266,7 +286,11 @@ class DebugModal(BaseModal):
         }.get(active_tab)
 
         if view_id:
-            self.query_one(view_id).refresh_data()
+            from src.ui.modals.debug.tabs import BaseDebugTab
+
+            view = self.query_one(view_id)
+            if hasattr(view, "refresh_data"):
+                view.refresh_data()
 
     def action_yank_selected(self) -> None:
         f = self.focused

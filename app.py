@@ -31,25 +31,29 @@ def setup_config():
 
 
 def setup_spotify():
-    """Register Spotify-dependent services."""
+    """Register Spotify-dependent services with robust initialization."""
     client_config = Container.resolve(ClientConfiguration)
     if not client_config.is_valid():
         return False
 
-    # 1. Initialize core network facade
-    network = SpotifyNetwork(client_config)
-    Container.register(SpotifyNetwork, lambda: network, singleton=True)
+    try:
+        # 1. Initialize core network facade
+        network = SpotifyNetwork(client_config)
+        Container.register(SpotifyNetwork, lambda: network, singleton=True)
 
-    # 2. Expose internal specialized services
-    Container.register(AuthService, lambda: network.auth, singleton=True)
-    Container.register(PlaybackService, lambda: network.playback, singleton=True)
-    Container.register(LibraryService, lambda: network.library, singleton=True)
-    Container.register(DiscoveryService, lambda: network.discovery, singleton=True)
+        # 2. Expose internal specialized services
+        Container.register(AuthService, lambda: network.auth, singleton=True)
+        Container.register(PlaybackService, lambda: network.playback, singleton=True)
+        Container.register(LibraryService, lambda: network.library, singleton=True)
+        Container.register(DiscoveryService, lambda: network.discovery, singleton=True)
 
-    if network.is_authenticated():
-        player = LocalPlayer()
-        Container.register(LocalPlayer, lambda: player, singleton=True)
-        return True
+        if network.is_authenticated():
+            player = LocalPlayer()
+            Container.register(LocalPlayer, lambda: player, singleton=True)
+            return True
+    except Exception as e:
+        print(f"Spotify initialization error: {e}")
+
     return False
 
 

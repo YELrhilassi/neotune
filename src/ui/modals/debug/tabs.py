@@ -3,7 +3,7 @@
 import json
 import os
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Any, Optional
 
 from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal, VerticalScroll

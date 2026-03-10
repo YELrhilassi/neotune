@@ -1,6 +1,6 @@
 """Authentication service for Spotify OAuth."""
 
-from typing import Optional, Dict, List, Any
+from typing import Optional, Any
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from src.core.logging_config import get_logger

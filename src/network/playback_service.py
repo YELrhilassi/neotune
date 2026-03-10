@@ -2,7 +2,7 @@
 
 import time
 import threading
-from typing import Optional, List, Dict, Any
+from typing import Optional, Any
 from src.core.constants import PlayerSettings
 from src.network.base import SpotifyServiceBase
 
@@ -22,7 +22,7 @@ class PlaybackService(SpotifyServiceBase):
 
         self._lock = threading.Lock()
 
-    def get_current_playback(self, force: bool = False) -> Optional[Dict[str, Any]]:
+    def get_current_playback(self, force: bool = False) -> Optional[dict[str, Any]]:
         """Fetch current playback state with predictive local sync."""
         with self._lock:
             now = time.time()
@@ -68,14 +68,16 @@ class PlaybackService(SpotifyServiceBase):
             self._last_state_time = now
             return state
 
-    def get_devices(self, force: bool = False) -> List[Dict[str, Any]]:
-        """Fetch available devices with aggressive caching."""
+    def get_devices(self, force: bool = True) -> list[dict[str, Any]]:
+        """Fetch available devices. Defaults to forcing a fresh fetch for accuracy."""
         with self._lock:
             now = time.time()
             if not force and (now - self._last_devices_time < self._devices_cache_ttl):
                 return self._last_devices
 
-            result = self._safe_api_call(self.sp.devices, default_return={}, track_name="devices")
+            result = self._safe_api_call(
+                self.sp.devices, default_return={}, track_name="devices", min_interval=0.5
+            )
             devices = result.get("devices", []) if result else []
             self._last_devices = devices
             self._last_devices_time = now
@@ -147,10 +149,11 @@ class PlaybackService(SpotifyServiceBase):
 
     def resume(self):
         """Resume playback with proactive device check to avoid 404s."""
-        # 1. Proactive check
+        # 1. Proactive check with FRESH device list
         state = self.get_current_playback()
         if not state or not state.get("device", {}).get("is_active"):
             # Try to recover before even calling the API
+            # force=True to ensure we see the local player if it just started
             dev_id = self.find_fallback_device()
             if dev_id:
                 self._debug.info("Playback", f"Activating device {dev_id} before resume")

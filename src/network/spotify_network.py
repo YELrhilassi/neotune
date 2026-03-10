@@ -1,6 +1,6 @@
 """Facade for modular Spotify services."""
 
-from typing import Optional, List, Dict, Any
+from typing import Optional, Any
 import spotipy
 from src.core.logging_config import get_logger
 from src.core.debug_logger import DebugLogger
@@ -75,10 +75,10 @@ class SpotifyNetwork:
         return self.auth.get_access_token()
 
     # --- Playback Delegation ---
-    def get_current_playback(self, force: bool = False) -> Optional[Dict[str, Any]]:
+    def get_current_playback(self, force: bool = False) -> Optional[dict[str, Any]]:
         return self.playback.get_current_playback(force=force)
 
-    def get_devices(self) -> Dict[str, Any]:
+    def get_devices(self) -> dict[str, Any]:
         return {"devices": self.playback.get_devices()}
 
     def play_track(self, uri, device_id=None, context_uri=None, offset_position=None):
@@ -119,26 +119,26 @@ class SpotifyNetwork:
         self.playback.previous()
 
     # --- Library Delegation ---
-    def get_user_profile(self) -> Optional[Dict[str, Any]]:
+    def get_user_profile(self) -> Optional[dict[str, Any]]:
         return self.library.get_user_profile()
 
-    def get_liked_songs(self, limit=50) -> List[Dict[str, Any]]:
+    def get_liked_songs(self, limit=50) -> list[dict[str, Any]]:
         return self.library.get_liked_songs(limit)
 
-    def get_playlists(self, limit=50) -> List[Dict[str, Any]]:
+    def get_playlists(self, limit=50) -> list[dict[str, Any]]:
         return self.library.get_playlists(limit)
 
-    def get_playlist_tracks(self, pid, limit=50) -> List[Dict[str, Any]]:
+    def get_playlist_tracks(self, pid, limit=50) -> list[dict[str, Any]]:
         return self.library.get_playlist_tracks(pid, limit)
 
-    def get_album_tracks(self, aid, limit=50) -> List[Dict[str, Any]]:
+    def get_album_tracks(self, aid, limit=50) -> list[dict[str, Any]]:
         return self.library.get_album_tracks(aid, limit)
 
-    def get_recently_played(self, limit=50) -> List[Dict[str, Any]]:
+    def get_recently_played(self, limit=50) -> list[dict[str, Any]]:
         return self.library.get_recently_played(limit)
 
     # --- Discovery Delegation ---
-    def get_browse_metadata(self) -> Dict[str, Any]:
+    def get_browse_metadata(self) -> dict[str, Any]:
         # Combines multiple calls for the sidebar
         profile = self.get_user_profile()
         country = profile.get("country") if profile else None
@@ -153,11 +153,11 @@ class SpotifyNetwork:
             "user_profile": profile,
         }
 
-    def get_playlists_by_category(self, cid, limit=50) -> List[Dict[str, Any]]:
+    def get_playlists_by_category(self, cid, limit=50) -> list[dict[str, Any]]:
         profile = self.get_user_profile()
         return self.discovery.get_category_playlists(
             cid, profile.get("country") if profile else None
         )
 
-    def search(self, query, qtype="track,playlist,album", limit=50) -> List[Dict[str, Any]]:
+    def search(self, query, qtype="track,playlist,album", limit=50) -> list[dict[str, Any]]:
         return self.discovery.search(query, qtype, limit)
