@@ -84,6 +84,15 @@ class TerminalRenderer(App):
         self.debug_logger.log(log_level, source, message)
         self.log(message)
 
+    def copy_to_clipboard(self, text: str) -> None:
+        """Copy text to system clipboard."""
+        from src.core.utils import copy_to_clipboard
+
+        if copy_to_clipboard(text):
+            self.notify("Copied to clipboard")
+        else:
+            self.notify("Failed to copy to clipboard", severity="error")
+
     def notify(
         self,
         message: str,

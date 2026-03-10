@@ -1,4 +1,6 @@
 import re
+import subprocess
+import platform
 
 
 def strip_icons(text: str) -> str:
@@ -17,3 +19,31 @@ def strip_icons(text: str) -> str:
     clean = re.sub(r"\s+", " ", clean).strip()
 
     return clean
+
+
+def copy_to_clipboard(text: str) -> bool:
+    """Copy text to system clipboard using available tools."""
+    if not text:
+        return False
+
+    try:
+        system = platform.system()
+        if system == "Darwin":
+            process = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+            process.communicate(text.encode("utf-8"))
+        elif system == "Linux":
+            # Try xclip first, then wl-copy for Wayland
+            try:
+                process = subprocess.Popen(
+                    ["xclip", "-selection", "clipboard"], stdin=subprocess.PIPE
+                )
+                process.communicate(text.encode("utf-8"))
+            except FileNotFoundError:
+                process = subprocess.Popen(["wl-copy"], stdin=subprocess.PIPE)
+                process.communicate(text.encode("utf-8"))
+        elif system == "Windows":
+            process = subprocess.Popen(["clip"], stdin=subprocess.PIPE)
+            process.communicate(text.encode("utf-8"))
+        return True
+    except Exception:
+        return False

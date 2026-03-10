@@ -24,3 +24,5 @@ class Icons:
     UNKNOWN = ""
     TELESCOPE = ""
     HEART = ""
+    COPY = ""
+    CLIPBOARD = ""

@@ -106,11 +106,39 @@ LogModal {
     padding: 0;
 }
 
+.pane-header {
+    height: 3;
+    padding: 0 1;
+    background: $background;
+    border-bottom: solid $panel;
+    align: left middle;
+}
+
+.pane-header Static {
+    width: 1fr;
+}
+
+.icon-btn {
+    min-width: 4;
+    width: 4;
+    height: 1;
+    border: none;
+    background: $panel;
+    padding: 0;
+    margin: 0;
+}
+
+.icon-btn:hover {
+    background: $primary;
+    color: $background;
+}
+
 #logs-filter-bar {
     height: 3;
     background: $background;
     padding: 0 1;
     border-bottom: solid $panel;
+    align: left middle;
 }
 
 #logs-filter-input {
@@ -159,9 +187,38 @@ LogModal {
     padding: 1;
 }
 
-#network-list {
-    background: transparent;
+#network-requests-list, #perf-metrics-list {
+    height: 1fr;
+    overflow-y: auto;
+    background: $background;
     border: none;
+}
+
+.network-row-item, .perf-row-item {
+    height: 3;
+    padding: 0 1;
+    border-bottom: solid $panel;
+    align: left middle;
+}
+
+.network-row-item:hover, .perf-row-item:hover {
+    background: $surface;
+}
+
+.network-row-item.selected {
+    background: $surface;
+    border-left: solid $primary;
+}
+
+.row-text {
+    width: 1fr;
+}
+
+.icon-btn-small {
+    min-width: 4;
+    height: 1;
+    border: none;
+    background: $panel;
 }
 
 #network-details {
@@ -170,9 +227,27 @@ LogModal {
     border: round $panel;
 }
 
-#perf-list {
-    background: transparent;
-    border: none;
+#perf-container {
+    padding: 1;
+    height: 1fr;
+    overflow-y: auto;
+}
+
+.perf-row {
+    height: auto;
+    margin-bottom: 1;
+    padding: 1;
+    background: $surface;
+    border: solid $panel;
+    align: left middle;
+}
+
+.perf-row Static {
+    width: 1fr;
+}
+
+.perf-copy-btn {
+    margin-left: 1;
 }
 
 #settings-buttons {

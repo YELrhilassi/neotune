@@ -231,8 +231,9 @@ class SpotifyNetwork:
                 return cached_val
 
         # 2. Prepare for Tracking
-        request_id = str(uuid.uuid4())[:8]
+        request_id = f"req_{str(uuid.uuid4())[:8]}"
         self._debug.network_start(request_id, "API", endpoint, dict(kwargs) if kwargs else None)
+        logger.debug(f"Network start: {endpoint} ({request_id})")
         start_time = time.time()
 
         try:

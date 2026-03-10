@@ -82,28 +82,32 @@ class DebugLogger:
 
     def __new__(cls) -> "DebugLogger":
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
+            cls._instance = super(DebugLogger, cls).__new__(cls)
             cls._instance._initialized = False
         return cls._instance
 
     def __init__(self):
-        if self._initialized:
+        if hasattr(self, "_initialized") and self._initialized:
             return
+
         self._initialized = True
-        self.config = DebugConfig()
-        self._log_entries: deque = deque(maxlen=1000)
-        self._network_requests: deque = deque(maxlen=100)
-        self._performance_metrics: Dict[str, List[float]] = {}
-        self._subscribers: List[Callable[[LogEntry], None]] = []
-        self._network_subscribers: List[Callable[[NetworkRequest], None]] = []
-        self._start_times: Dict[str, float] = {}
+        self.config = DebugConfig(enabled=True)
+        self._log_entries = deque(maxlen=1000)
+        self._network_requests = deque(maxlen=100)
+        self._performance_metrics = {}
+        self._subscribers = []
+        self._network_subscribers = []
+        self._start_times = {}
+
+        # Self-tracking
+        self.info("DebugLogger", f"Instance {id(self)} initialized")
 
     def configure(self, config: DebugConfig) -> None:
         """Configure the debug logger."""
         self.config = config
-        self._log_entries = deque(maxlen=config.max_log_entries)
-        self._network_requests = deque(maxlen=config.max_network_history)
-        self.info("DebugLogger", "Debug logging configured")
+        # Don't recreate deques to avoid losing history,
+        # but we could adjust maxlen if it were supported (it's not for existing deques)
+        self.info("DebugLogger", "Configuration updated")
 
     def is_enabled(self) -> bool:
         """Check if debugging is enabled."""
@@ -125,11 +129,21 @@ class DebugLogger:
 
         # Safe lookup for log level
         try:
-            config_val = LogLevel(self.config.log_level.lower())
+            if isinstance(self.config.log_level, str):
+                config_val = LogLevel(self.config.log_level.lower())
+            else:
+                config_val = LogLevel.INFO
         except ValueError:
             config_val = LogLevel.INFO
 
         config_level = level_order.get(config_val, 2)
+
+        # NETWORK and PERFORMANCE should always be logged if their tracking is enabled
+        if level == LogLevel.NETWORK:
+            return self.config.network_tracking
+        if level == LogLevel.PERFORMANCE:
+            return self.config.performance_tracking
+
         return level_order.get(level, 0) >= config_level
 
     def _create_entry(
@@ -224,11 +238,12 @@ class DebugLogger:
         self._network_requests.append(request)
         self._notify_network_subscribers(request)
 
+        # Log as standard entry too
         self.log(
             LogLevel.NETWORK,
             "Network",
-            f"Request started: {method} {endpoint}",
-            {"request_id": request_id, "params": params},
+            f"{method} {endpoint} (Started)",
+            {"request_id": request_id},
         )
 
     def network_end(
