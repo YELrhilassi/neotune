@@ -12,9 +12,11 @@ class UserPreferences:
         self.lua.execute(path_setup)
         
         self.theme = "default"
+        self.theme_vars = None
         self.leader = "space"
         self.show_which_key = True
         self.auto_play = False
+        self.auto_select_device = True
         
         # We will store dynamic mappings like: {"p": {"action": "play_pause", "desc": "Play/Pause"}}
         self.keybindings = {
@@ -68,6 +70,10 @@ class UserPreferences:
             spotify_tui.auto_play = enabled
         end
         
+        function spotify_tui.set_auto_select_device(enabled)
+            spotify_tui.auto_select_device = enabled
+        end
+        
         function spotify_tui.map(key, action, desc)
             spotify_tui.keymaps[key] = { action = action, desc = desc }
         end
@@ -86,8 +92,11 @@ class UserPreferences:
             spotify_tui.audio.bitrate = tostring(bitrate)
         end
         
-        function spotify_tui.set_theme(theme)
+        function spotify_tui.set_theme(theme, vars)
             spotify_tui.theme = theme
+            if vars then
+                spotify_tui.theme_vars = vars
+            end
         end
         """
         self.lua.execute(setup_lua)
@@ -114,6 +123,18 @@ class UserPreferences:
                 if getattr(tui_api, "theme", None):
                     self.theme = tui_api.theme
                     
+                if getattr(tui_api, "theme_vars", None):
+                    self.theme_vars = {
+                        "primary": getattr(tui_api.theme_vars, "primary", None),
+                        "accent": getattr(tui_api.theme_vars, "accent", None),
+                        "background": getattr(tui_api.theme_vars, "background", None),
+                        "surface": getattr(tui_api.theme_vars, "surface", None),
+                        "panel": getattr(tui_api.theme_vars, "panel", None),
+                        "success": getattr(tui_api.theme_vars, "success", None),
+                        "warning": getattr(tui_api.theme_vars, "warning", None),
+                        "error": getattr(tui_api.theme_vars, "error", None),
+                    }
+                    
                 if getattr(tui_api, "leader", None):
                     self.leader = tui_api.leader
                     
@@ -122,6 +143,9 @@ class UserPreferences:
                 
                 if getattr(tui_api, "auto_play", None) is not None:
                     self.auto_play = bool(tui_api.auto_play)
+                
+                if getattr(tui_api, "auto_select_device", None) is not None:
+                    self.auto_select_device = bool(tui_api.auto_select_device)
                 
                 # Extract keybindings
                 lua_kb = tui_api.keymaps

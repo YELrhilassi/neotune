@@ -14,6 +14,7 @@ class StatusBar(Static):
             yield Label("", id="status-mode")
             yield Label("", id="status-mode-sep")
             yield Label("", id="status-left")
+            yield Label("", id="status-left-sep")
             yield Label("", id="status-middle")
             yield Label("", id="status-right-sep")
             yield Label("", id="status-right")

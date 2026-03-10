@@ -2,129 +2,148 @@ import os
 import subprocess
 import atexit
 import psutil
-import webbrowser
 import time
 import signal
 
+
 class LocalPlayer:
     def __init__(self, device_name="Spotify TUI Player"):
-        # The binary should be in the same folder as this script
-        self.binary_path = os.path.join(os.path.dirname(__file__), "spotifyd")
+        # Strictly use librespot compiled from source
+        self.binary_path = self._find_binary()
         self.device_name = device_name
-        self.cache_dir = os.path.expanduser("~/.cache/spotify_tui_daemon")
+        self.cache_dir = os.path.expanduser("~/.cache/spotify_tui_librespot")
+        self.binary_type = "librespot"
+
         self.process = None
         self._last_audio_config = None
         os.makedirs(self.cache_dir, exist_ok=True)
 
+    def _find_binary(self):
+        # 1. Check local librespot (compiled and placed here)
+        local_librespot = os.path.join(os.path.dirname(__file__), "librespot")
+        if os.path.exists(local_librespot):
+            return local_librespot
+
+        # 2. Check system PATH for librespot as fallback
+        try:
+            return subprocess.check_output(["which", "librespot"]).decode().strip()
+        except Exception:
+            pass
+
+        return "librespot"
+
     def is_authenticated(self):
-        creds_file = os.path.join(self.cache_dir, "oauth", "credentials.json")
+        # librespot usually saves credentials in the cache dir if it has them
+        creds_file = os.path.join(self.cache_dir, "credentials.json")
         return os.path.exists(creds_file)
 
     def is_running(self) -> bool:
-        """Checks if the spotifyd process is alive."""
         if self.process is None:
             return False
         return self.process.poll() is None
 
-    def get_auth_process(self):
-        """Starts the spotifyd authentication process and returns the popen object."""
-        cmd = [
-            self.binary_path, 
-            "authenticate", 
-            "-c", self.cache_dir, 
-            "--oauth-port", "8082"
-        ]
-        return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-
     def stop_existing(self):
-        """
-        Kills any existing spotifyd processes.
-        Uses pkill to perfectly target the absolute path of the binary.
-        """
         try:
-            # Forcefully kill any process matching our exact binary path
-            subprocess.run(
-                ["pkill", "-9", "-f", self.binary_path],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
-        except Exception:
-            pass
-                
-        # Clean up any potential lock files or stale sockets in the cache dir
-        try:
-            for item in os.listdir(self.cache_dir):
-                if item.endswith(".sock") or item.endswith(".lock"):
-                    os.remove(os.path.join(self.cache_dir, item))
+            # Forcefully kill any existing librespot processes to ensure we start fresh
+            # and no ghost processes are left behind from previous crashes.
+            import psutil
+
+            for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+                try:
+                    # Check if 'librespot' is in name or any of the cmdline arguments
+                    is_librespot = "librespot" in (proc.info["name"] or "").lower()
+                    if not is_librespot and proc.info["cmdline"]:
+                        is_librespot = any(
+                            "librespot" in arg.lower() for arg in proc.info["cmdline"]
+                        )
+
+                    if is_librespot and proc.pid != os.getpid():
+                        proc.kill()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
         except Exception:
             pass
 
-    def start(self, audio_config=None):
-        if not os.path.exists(self.binary_path):
-            return
-            
+    def start(self, audio_config=None, access_token=None):
         if self.is_running():
             return
 
         self._last_audio_config = audio_config
-
-        # Kill any orphaned processes first
         self.stop_existing()
 
-        # Build command from user prefs or defaults
         bitrate = "320"
-        
         if audio_config:
             bitrate = audio_config.get("bitrate", bitrate)
 
         cmd = [
             self.binary_path,
-            "--no-daemon",
-            "--device-name", self.device_name,
-            "--bitrate", bitrate,
-            "-c", self.cache_dir,
-            "--initial-volume", "100"
+            "--name",
+            self.device_name,
+            "--bitrate",
+            bitrate,
+            "--cache",
+            self.cache_dir,
+            "--initial-volume",
+            "100",
+            "--device-type",
+            "computer",
+            "--disable-discovery",  # Ensure it doesn't stay alive as a discovery daemon
         ]
-        
+
+        if access_token:
+            cmd.extend(["--access-token", access_token])
+
         if audio_config and audio_config.get("backend"):
             cmd.extend(["--backend", audio_config.get("backend")])
-        if audio_config and audio_config.get("device") and audio_config.get("device") != "default":
-            cmd.extend(["--device", audio_config.get("device")])
-        
-        try:
-            log_path = os.path.join(self.cache_dir, "daemon.log")
-            self._log_file = open(log_path, "w")
-            self.process = subprocess.Popen(
-                cmd, 
-                stdin=subprocess.DEVNULL,
-                stdout=self._log_file, 
-                stderr=self._log_file
-            )
-            
-            atexit.register(self.stop)
-        except Exception:
-            pass
 
-    def restart(self):
-        """Silently restarts the daemon using previous config."""
+        try:
+            log_path = os.path.join(self.cache_dir, "librespot.log")
+            self._log_file = open(log_path, "w")
+
+            def preexec_fn():
+                # On Linux, ensure the child dies when the parent dies
+                try:
+                    import ctypes
+
+                    libc = ctypes.CDLL("libc.so.6")
+                    # PR_SET_PDEATHSIG = 1, SIGKILL = 9
+                    libc.prctl(1, 9, 0, 0, 0)
+                except Exception:
+                    pass
+
+            self.process = subprocess.Popen(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                stdout=self._log_file,
+                stderr=self._log_file,
+                preexec_fn=preexec_fn if os.name == "posix" else None,
+            )
+            atexit.register(self.stop)
+        except Exception as e:
+            print(f"Failed to start librespot: {e}")
+
+    def restart(self, access_token=None):
         self.stop()
-        self.start(audio_config=self._last_audio_config)
+        # Wait a moment for port to release
+        time.sleep(0.5)
+        self.start(self._last_audio_config, access_token=access_token)
 
     def stop(self):
-        # We explicitly kill it instantly to prevent TUI shutdown hangs
+
         if self.process:
             try:
                 self.process.kill()
-                self.process.wait(timeout=1) # Wait a maximum of 1s to reap the process
+                self.process.wait(timeout=1)
             except Exception:
                 pass
             self.process = None
-            
-        if hasattr(self, '_log_file') and self._log_file and not self._log_file.closed:
+
+        if hasattr(self, "_log_file") and self._log_file and not self._log_file.closed:
             try:
                 self._log_file.close()
             except Exception:
                 pass
-                
-        # Do a quick synchronous sweep to ensure no orphans survived
         self.stop_existing()
+
+    def __del__(self):
+        self.stop()

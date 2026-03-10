@@ -3,15 +3,13 @@ from src.network.local_player import LocalPlayer
 from src.config.client_config import ClientConfiguration
 from src.config.user_prefs import UserPreferences
 
+
 class ApplicationState:
     def __init__(self):
         self.local_player = LocalPlayer()
         self.client_config = ClientConfiguration()
         self.user_prefs = UserPreferences()
-        
-        # Start local player after loading preferences
-        self.local_player.start(self.user_prefs.audio_config)
-        
+
         try:
             self.network = SpotifyNetwork(self.client_config)
             self.is_authenticated = True
@@ -23,10 +21,10 @@ class ApplicationState:
         self.playlists = []
         self.featured_playlists = []
         self.recently_played = []
-        
+
         self.current_tracks = []
         self.current_playback = None
-        
+
         # Navigation History (rudimentary stack of views)
         self.navigation_history = ["library"]
 

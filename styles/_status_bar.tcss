@@ -22,7 +22,7 @@
 #status-mode.search { background: $success; }
 
 #status-mode-sep {
-    background: $panel;
+    background: $accent;
 }
 
 #status-mode-sep.normal { color: $primary; }
@@ -30,9 +30,16 @@
 #status-mode-sep.search { color: $success; }
 
 #status-left {
-    background: $panel;
-    color: $text;
+    background: $accent;
+    color: $surface;
     width: auto;
+    text-style: bold;
+    padding: 0 1;
+}
+
+#status-left-sep {
+    background: $surface;
+    color: $accent;
 }
 
 #status-middle {

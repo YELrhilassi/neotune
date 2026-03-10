@@ -37,7 +37,7 @@ The app handles sensitive data through an integrated wizard.
 
 ## 5. Playback Daemon (`src/network/local_player.py`)
 
-Integrates the `spotifyd` binary for high-quality DRM playback.
+Integrates the `librespot` binary for high-quality playback.
 
 - **Lifecycle Management**: Automatically started and stopped by the TUI.
 - **Credential Hand-off**: Securely passes auth tokens to the daemon for a seamless "connect" experience.

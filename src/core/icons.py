@@ -23,3 +23,4 @@ class Icons:
     RADIO = ""
     UNKNOWN = ""
     TELESCOPE = ""
+    HEART = ""
