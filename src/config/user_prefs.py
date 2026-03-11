@@ -43,6 +43,7 @@ class UserPreferences:
         }
 
         self.audio_config = {"backend": "pulseaudio", "device": "default", "bitrate": "320"}
+        self.special_playlists = []
 
         self._expose_api()
         self.load()
@@ -54,6 +55,7 @@ class UserPreferences:
         spotify_tui.keymaps = {}
         spotify_tui.commands = {}
         spotify_tui.audio = {}
+        spotify_tui.special_playlists = {}
         
         function spotify_tui.set_leader(key)
             spotify_tui.leader = key
@@ -189,6 +191,41 @@ class UserPreferences:
                     self.audio_config["bitrate"] = getattr(
                         lua_audio, "bitrate", self.audio_config["bitrate"]
                     )
+
+                # Extract special playlists
+                lua_sp = getattr(tui_api, "special_playlists", None)
+                if lua_sp:
+                    self.special_playlists = []
+
+                    def _parse_item(p):
+                        try:
+                            # Try attribute access (for Lua objects) then dict access
+                            name = getattr(p, "name", None) or p.get("name")
+                            uri = getattr(p, "uri", None) or p.get("uri")
+                            desc = getattr(p, "description", None) or p.get("description", "")
+                            if name and uri:
+                                self.special_playlists.append(
+                                    {"name": str(name), "uri": str(uri), "description": str(desc)}
+                                )
+                        except:
+                            pass
+
+                    # Try multiple iteration strategies for lupa
+                    try:
+                        # Case: Array-like table (1, 2, 3...)
+                        for i in range(1, len(lua_sp) + 1):
+                            _parse_item(lua_sp[i])
+                    except:
+                        try:
+                            # Case: Map-like or generic iteration
+                            for p in lua_sp.values():
+                                _parse_item(p)
+                        except:
+                            try:
+                                for p in lua_sp:
+                                    _parse_item(p)
+                            except:
+                                pass
 
                 # Extract debug config
                 lua_debug = getattr(tui_api, "debug", None)

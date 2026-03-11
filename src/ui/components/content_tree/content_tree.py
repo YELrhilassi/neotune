@@ -7,11 +7,11 @@ from src.core.di import Container
 from src.state.store import Store
 from src.network.spotify_network import SpotifyNetwork
 from src.ui.components.content_tree.tree_nodes import (
-    LikedSongsBranch,
-    RecentlyPlayedBranch,
+    CollectionBranch,
     PlaylistsBranch,
-    FeaturedBranch,
+    DiscoveryBranch,
 )
+
 
 if TYPE_CHECKING:
     from src.ui.terminal_renderer import TerminalRenderer
@@ -38,6 +38,7 @@ class ContentTree(Tree):
         self.store.subscribe("playlists", self._reactive_refresh)
         self.store.subscribe("browse_metadata", self._reactive_refresh)
         self.store.subscribe("recently_played", self._reactive_refresh)
+        self.store.subscribe("special_playlists", self._reactive_refresh)
         self.store.subscribe("loading_states", self._handle_loading)
 
         self.refresh_tree()
@@ -81,10 +82,9 @@ class ContentTree(Tree):
 
             self.clear()
             try:
-                LikedSongsBranch(self.root, self.store).build()
-                RecentlyPlayedBranch(self.root, self.store).build()
+                CollectionBranch(self.root, self.store).build()
                 PlaylistsBranch(self.root, self.store).build()
-                FeaturedBranch(self.root, self.store).build()
+                DiscoveryBranch(self.root, self.store).build()
             except Exception as e:
                 self.app.log(f"Tree build error: {e}")
 
@@ -131,23 +131,25 @@ class ContentTree(Tree):
     @on(Tree.NodeSelected)
     def handle_selection(self, event: Tree.NodeSelected) -> None:
         """Handles node selection (Enter/Click)."""
-        data = event.node.data
+        node = event.node
+        data = node.data
         if not data:
             return
 
         node_type = data.get("type")
 
-        # 1. Folders: Toggle expansion state
+        # 1. Groups & Categories: Handle Expansion
         if node_type in ["group", "category_root"]:
-            if node_type == "category_root" and not event.node.children:
+            if node_type == "category_root" and not node.children:
                 # Lazy load category playlists
-                self.load_category_playlists(event.node, data.get("id"), str(event.node.label))
+                self.load_category_playlists(node, data.get("id"), str(node.label))
 
-            # Standard toggle
-            event.node.toggle()
+            # Use toggle and ensure UI update
+            node.toggle()
+            # If it's a group, we don't want to load anything into the track list
             return
 
-        # 2. Content: Load tracks
+        # 2. Content: Load tracks/views
         node_id = data.get("id")
         self.store.set("last_active_node_id", node_id, persist=True)
 
@@ -157,6 +159,8 @@ class ContentTree(Tree):
             self.load_liked_songs()
         elif node_type == "recently_played":
             self.load_recently_played()
+        elif node_type == "made_for_you":
+            self.load_made_for_you()
 
     @work(exclusive=True, thread=True)
     def load_category_playlists(self, node: TreeNode, category_id: str, category_name: str = ""):
@@ -242,6 +246,90 @@ class ContentTree(Tree):
                     pass
 
             self.app.call_from_thread(_focus)
+        except Exception as e:
+            if self.app:
+                self.app.call_from_thread(self.app.notify, f"Error: {e}", severity="error")
+        finally:
+            current_l = self.store.get("loading_states") or {}
+            self.app.call_from_thread(
+                self.store.set, "loading_states", {**current_l, "track_list": False}
+            )
+
+    @work(exclusive=True, thread=True)
+    def load_made_for_you(self):
+        """Background worker for 'Made For You' content."""
+        try:
+            current_l = self.store.get("loading_states") or {}
+            self.app.call_from_thread(
+                self.store.set, "loading_states", {**current_l, "track_list": True}
+            )
+
+            combined = []
+
+            # 1. Add Special Playlists from Lua Config
+            from src.config.user_prefs import UserPreferences
+
+            try:
+                prefs = Container.resolve(UserPreferences)
+                for pl in prefs.special_playlists:
+                    combined.append(
+                        {
+                            "type": "context",
+                            "context_type": "playlist",
+                            "uri": pl.get("uri"),
+                            "name": pl.get("name"),
+                            "metadata": {"artists": pl.get("description", "Personalized Mix")},
+                        }
+                    )
+            except:
+                pass
+
+            # 2. Add Algorithmic Categories from Spotify
+            metadata = self.store.get("browse_metadata") or {}
+            categories = metadata.get("categories", [])
+
+            for cat in categories:
+                name_lower = cat.get("name", "").lower()
+                cat_id = cat.get("id")
+                # Algorithmic check
+                if (
+                    any(
+                        term in name_lower
+                        for term in [
+                            "made for you",
+                            "daily mix",
+                            "discover weekly",
+                            "release radar",
+                            "mix",
+                            "dj",
+                        ]
+                    )
+                    or cat_id == "made-for-you"
+                ):
+                    combined.append(
+                        {
+                            "type": "context",
+                            "context_type": "category",
+                            "uri": f"spotify:category:{cat_id}",
+                            "id": cat_id,
+                            "name": cat.get("name"),
+                            "metadata": {"artists": "Spotify Algorithmic Content"},
+                        }
+                    )
+
+            self.app.call_from_thread(self.store.set, "current_tracks", combined)
+            self.app.call_from_thread(
+                self.store.set, "last_active_context", "made_for_you", persist=True
+            )
+
+            def _focus():
+                try:
+                    self.app.query_one("TrackList").focus()
+                except:
+                    pass
+
+            self.app.call_from_thread(_focus)
+
         except Exception as e:
             if self.app:
                 self.app.call_from_thread(self.app.notify, f"Error: {e}", severity="error")

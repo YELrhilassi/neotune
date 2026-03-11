@@ -27,7 +27,7 @@ class DiscoveryService(SpotifyServiceBase):
         return [c for c in categories if c and c.get("id") and c.get("name")]
 
     def get_featured_playlists(self, country: Optional[str] = None) -> dict[str, Any]:
-        """Fetch featured playlists with 404 suppression."""
+        """Fetch featured playlists with 404 suppression and search fallback."""
         result = self._safe_api_call(
             self.sp.featured_playlists,
             country=country,
@@ -37,9 +37,18 @@ class DiscoveryService(SpotifyServiceBase):
             min_interval=60.0,
             suppress_status_codes=[404],
         )
+
+        if result and result.get("playlists"):
+            return {
+                "message": result.get("message", "Featured"),
+                "items": result.get("playlists", {}).get("items", []),
+            }
+
+        # Fallback: Search for "Featured" or "Popular"
+        search_res = self.search("Spotify Popular", types="playlist", limit=10)
         return {
-            "message": result.get("message", "Featured") if result else "Featured",
-            "items": result.get("playlists", {}).get("items", []) if result else [],
+            "message": "Popular Playlists",
+            "items": [r["data"] for r in search_res if r.get("_qtype") == "playlist"],
         }
 
     def search(

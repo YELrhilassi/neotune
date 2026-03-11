@@ -26,3 +26,4 @@ class Icons:
     HEART = ""
     COPY = ""
     CLIPBOARD = ""
+    STAR = ""

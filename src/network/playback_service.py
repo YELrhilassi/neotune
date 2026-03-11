@@ -68,9 +68,12 @@ class PlaybackService(SpotifyServiceBase):
         if not state or not state.get("is_playing"):
             return
 
-        # ONLY record if our TUI player is the output device (user request)
+        # Record if this is happening on our preferred device
         device = state.get("device", {})
-        if device.get("name") != PlayerSettings.DEVICE_NAME:
+        is_tui_player = device.get("name") == PlayerSettings.DEVICE_NAME
+
+        # User requested: register if it's the selected output device (TUI Player)
+        if not is_tui_player:
             return
 
         context = state.get("context")
@@ -83,46 +86,52 @@ class PlaybackService(SpotifyServiceBase):
         if not uri or ctype not in ["playlist", "album"]:
             return
 
-        # Check if it's different from last recorded
-        if not hasattr(self, "_last_recorded_uri") or self._last_recorded_uri != uri:
-            self._last_recorded_uri = uri
+        # Check if we should (re)record
+        # We record if it's a new URI OR if we only have a placeholder name for the current one
+        from src.core.activity_service import ActivityService
+        from src.core.di import Container as DIContainer
 
-            from src.core.activity_service import ActivityService
-            from src.core.di import Container as DIContainer
-            from src.network.library_service import LibraryService
+        activity = Container.resolve(ActivityService)
+        history = activity.get_recent_contexts()
+        existing = next((item for item in history if item["uri"] == uri), None)
 
-            activity = DIContainer.resolve(ActivityService)
+        # If it's a new URI or the existing one has a placeholder name
+        is_placeholder = existing and (
+            ":" in existing["name"]
+            or existing["name"].lower() in ["playlist", "album", "unknown context"]
+        )
 
-            # Use a background task to fetch metadata if needed to not block polling
+        if not existing or is_placeholder:
+            # Use a background task to fetch metadata
             def _fetch_meta_and_record():
                 try:
                     from src.network.library_service import LibraryService
-                    from src.core.di import Container as DIContainer
 
-                    library = DIContainer.resolve(LibraryService)
+                    library = Container.resolve(LibraryService)
 
                     # Start with a placeholder based on URI
                     context_id = uri.split(":")[-1]
                     name = f"{ctype.capitalize()}: {context_id}"
                     metadata = {}
 
-                    # 1. Try to get info from current item first (most efficient)
-                    item = state.get("item")
-                    if item:
-                        if (
-                            ctype == "album"
-                            and item.get("album")
-                            and item["album"].get("uri") == uri
-                        ):
-                            name = item["album"].get("name", name)
-                            metadata["artists"] = ", ".join(
-                                [a.get("name", "") for a in item["album"].get("artists", [])]
-                            )
+                    # 0. Check Lua Special Playlists first (highest priority)
+                    from src.config.user_prefs import UserPreferences
 
-                    # 2. Fetch full metadata if name is still a placeholder
+                    try:
+                        prefs = Container.resolve(UserPreferences)
+                        for sp in prefs.special_playlists:
+                            if sp.get("uri") == uri:
+                                name = sp.get("name", name)
+                                metadata["artists"] = sp.get("description", "")
+                                break
+                    except:
+                        pass
+
+                    # 1. Fetch full metadata if name is still a placeholder
                     if ":" in name or name.lower() in ["album", "playlist"]:
                         try:
                             if ctype == "playlist":
+                                # Use fields to reduce response size and potential errors
                                 meta = library.get_playlist_metadata(context_id)
                                 if meta:
                                     name = meta.get("name", name)
@@ -139,11 +148,12 @@ class PlaybackService(SpotifyServiceBase):
                                             [a.get("name", "") for a in artists]
                                         )
                         except:
-                            pass
+                            pass  # Keep the placeholder if fetch fails
 
                     activity.record_context_play(uri, name, ctype, metadata)
+                    self._debug.info("Activity", f"Recorded context: {name} ({uri})")
                 except Exception as e:
-                    self._debug.error("Playback", f"Failed to fetch metadata for {uri}: {e}")
+                    self._debug.error("Activity", f"Failed to fetch metadata for {uri}: {e}")
 
             import threading
 

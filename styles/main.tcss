@@ -53,6 +53,37 @@ ContentTree {
     padding: 0;
 }
 
+ContentTree .tree--label {
+    padding: 0 1;
+}
+
+ContentTree > .tree--cursor {
+    background: $overlay;
+    color: $primary;
+    text-style: bold;
+}
+
+ContentTree .tree--node-selected {
+    color: $accent;
+    text-style: bold italic;
+}
+
+/* Sidebar Sections Styling */
+ContentTree .tree--node-group {
+    color: $primary;
+    text-style: bold;
+    margin-top: 1;
+}
+
+ContentTree .tree--node-category_root {
+    color: $fg;
+}
+
+/* Tighter tree for list feel */
+Tree .tree--guides {
+    color: $overlay;
+}
+
 DataTable {
     background: $bg;
 }
