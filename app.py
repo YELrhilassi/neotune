@@ -22,12 +22,26 @@ from textual.widgets import Label, Button, Static
 from textual.containers import Vertical, Center
 
 
+from src.state.pubsub import PubSub
+from src.state.feature_stores import PlaybackStore, NetworkStore, DeviceStore, UIStore, ConfigStore
+
+
 def setup_config():
     """Register essential services."""
     Container.register(ClientConfiguration, ClientConfiguration, singleton=True)
     Container.register(UserPreferences, UserPreferences, singleton=True)
+    Container.register(PubSub, PubSub, singleton=True)
     Container.register(Store, Store, singleton=True)
+
+    # Register Feature-Specific Stores
+    Container.register(PlaybackStore, PlaybackStore, singleton=True)
+    Container.register(NetworkStore, NetworkStore, singleton=True)
+    Container.register(DeviceStore, DeviceStore, singleton=True)
+    Container.register(UIStore, UIStore, singleton=True)
+    Container.register(ConfigStore, ConfigStore, singleton=True)
+
     Container.register(CommandService, CommandService, singleton=True)
+
     Container.register(CacheStore, CacheStore, singleton=True)
     Container.register(ActivityService, ActivityService, singleton=True)
 
@@ -51,6 +65,9 @@ def setup_spotify():
 
         if network.is_authenticated():
             try:
+                # Update Network Store
+                Container.resolve(NetworkStore).update(is_authenticated=True, api_connected=True)
+
                 player = Container.resolve(LocalPlayer)
             except:
                 player = LocalPlayer()

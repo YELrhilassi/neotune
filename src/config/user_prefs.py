@@ -232,25 +232,27 @@ class UserPreferences:
 
                     # Try multiple iteration strategies for lupa
                     try:
-                        # Case: Array-like table (1-indexed)
-                        for i in range(1, 100):
-                            item = lua_sp[i]
-                            if item:
-                                _parse_item(item)
-                            else:
-                                break
+                        # Case 1: Array-like table
+                        if hasattr(lua_sp, "items"):
+                            # This handles dict-like or lupa objects with .items()
+                            for _, p in lua_sp.items():
+                                _parse_item(p)
+                        else:
+                            # Case 2: Standard 1-based indexing
+                            for i in range(1, 1000):
+                                item = lua_sp[i]
+                                if item:
+                                    _parse_item(item)
+                                else:
+                                    break
                     except:
                         try:
-                            for p in lua_sp.values():
+                            # Case 3: Direct iteration
+                            for p in lua_sp:
                                 if p:
                                     _parse_item(p)
                         except:
-                            try:
-                                for p in lua_sp:
-                                    if p:
-                                        _parse_item(p)
-                            except:
-                                pass
+                            pass
 
                     from src.core.debug_logger import DebugLogger
 

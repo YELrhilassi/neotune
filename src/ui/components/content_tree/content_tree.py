@@ -1,4 +1,5 @@
 from typing import Dict, Any, List, Optional, cast, Set, TYPE_CHECKING
+import threading
 from textual.widgets import Tree
 from textual.widgets.tree import TreeNode
 from textual.binding import Binding
@@ -12,31 +13,41 @@ from src.ui.components.content_tree.tree_nodes import (
     PlaylistsBranch,
     DiscoveryBranch,
 )
+from src.state.feature_stores import UIStore
 
 if TYPE_CHECKING:
     from src.ui.terminal_renderer import TerminalRenderer
 
 
 class ContentTree(Tree):
-    """
-    Primary navigation component using a tree structure.
-    """
-
     def __init__(self, **kwargs):
         super().__init__("Root", **kwargs)
         self.show_root = False
         self.store = Container.resolve(Store)
+        self.ui_store = Container.resolve(UIStore)
         self.network = Container.resolve(SpotifyNetwork)
         self._refresh_timer = None
         self._is_refreshing = False
+        self._last_build_data = {}
 
     def on_mount(self):
-        self.store.subscribe("playlists", self._reactive_refresh)
-        self.store.subscribe("browse_metadata", self._reactive_refresh)
-        self.store.subscribe("recently_played", self._reactive_refresh)
-        self.store.subscribe("special_playlists", self._reactive_refresh)
-        self.store.subscribe("loading_states", self._handle_loading)
+        self.ui_store.subscribe(self._on_ui_state_change)
         self.refresh_tree()
+
+    def _on_ui_state_change(self, state: dict):
+        if not self.app:
+            return
+        self._handle_loading(state.get("loading_states"))
+
+        # Only rebuild tree if navigation data changed
+        new_data = {
+            "playlists": state.get("playlists"),
+            "browse_metadata": state.get("browse_metadata"),
+            "special_playlists": state.get("special_playlists"),
+        }
+        if new_data != self._last_build_data:
+            self._last_build_data = new_data
+            self._reactive_refresh(None)
 
     def _handle_loading(self, states):
         if states and self.app:
@@ -50,26 +61,23 @@ class ContentTree(Tree):
                     self.app.call_from_thread(setattr, self, "loading", new_loading)
 
     def _reactive_refresh(self, data):
-        app = self.app
-        if not app:
+        if not self.app:
             return
         if self._refresh_timer:
             self._refresh_timer.cancel()
-        import threading
 
         def _deferred():
             try:
-                # Use the captured app reference
                 import threading
 
                 if threading.current_thread() is threading.main_thread():
                     self.refresh_tree()
                 else:
-                    app.call_from_thread(self.refresh_tree)
-            except Exception:
+                    self.app.call_from_thread(self.refresh_tree)
+            except:
                 pass
 
-        self._refresh_timer = threading.Timer(2.0, _deferred)
+        self._refresh_timer = threading.Timer(1.0, _deferred)
         self._refresh_timer.daemon = True
         self._refresh_timer.start()
 
@@ -85,6 +93,8 @@ class ContentTree(Tree):
                 cursor_node_id = self.cursor_node.data.get("id")
 
             self.clear()
+
+            # Pass ui_store to branches if needed, or just let them use store as they do
             CollectionBranch(self.root, self.store).build()
             PlaylistsBranch(self.root, self.store).build()
             DiscoveryBranch(self.root, self.store).build()
@@ -95,6 +105,10 @@ class ContentTree(Tree):
                 self._select_node_by_id(self.root, target_id)
             if had_focus:
                 self.focus()
+        except Exception as e:
+            from src.core.debug_logger import DebugLogger
+
+            DebugLogger().error("ContentTree", f"Tree build error: {e}")
         finally:
             self._is_refreshing = False
 
@@ -127,7 +141,6 @@ class ContentTree(Tree):
 
     @on(Tree.NodeSelected)
     def handle_selection(self, event: Tree.NodeSelected) -> None:
-        """Handles node selection (Enter/Click)."""
         node = event.node
         data = node.data
         if not data:
@@ -159,8 +172,6 @@ class ContentTree(Tree):
         try:
             self.app.call_from_thread(lambda: node.add_leaf("Loading...", data={"type": "loading"}))
             self.app.call_from_thread(node.expand)
-
-            # Resolve via category endpoint with robust search fallback
             playlists = self.network.discovery.get_category_playlists(
                 category_id, name_hint=category_name
             )
@@ -184,39 +195,30 @@ class ContentTree(Tree):
 
     @work(exclusive=True, thread=True)
     def load_made_for_you(self):
-        """Loads Lua and Spotify personalized mixes into the main track list area."""
         try:
-            current_l = self.store.get("loading_states") or {}
+            ui_state = self.ui_store.get()
+            current_l = ui_state.get("loading_states") or {}
             self.app.call_from_thread(
-                self.store.set, "loading_states", {**current_l, "track_list": True}
+                self.ui_store.update, loading_states={**current_l, "track_list": True}
             )
             combined = []
             seen_uris = set()
 
-            # 1. Lua Config Special Playlists
-            from src.config.user_prefs import UserPreferences
+            # 1. Lua Special Playlists
+            for sp in ui_state.get("special_playlists") or []:
+                uri = sp.get("uri")
+                if uri and uri not in seen_uris:
+                    combined.append(
+                        {
+                            "type": "context",
+                            "context_type": "playlist",
+                            "uri": uri,
+                            "name": sp.get("name"),
+                            "metadata": {"artists": sp.get("description", "Lua Config")},
+                        }
+                    )
+                    seen_uris.add(uri)
 
-            try:
-                prefs = Container.resolve(UserPreferences)
-                for pl in prefs.special_playlists:
-                    if not isinstance(pl, dict):
-                        continue
-                    uri = pl.get("uri")
-                    if uri and uri not in seen_uris:
-                        combined.append(
-                            {
-                                "type": "context",
-                                "context_type": "playlist",
-                                "uri": uri,
-                                "name": pl.get("name", "Special"),
-                                "metadata": {"artists": pl.get("description", "User Mix")},
-                            }
-                        )
-                        seen_uris.add(uri)
-            except:
-                pass
-
-            # 2. Spotify 'Made For You' search
             mfy_playlists = self.network.discovery.get_made_for_you_playlists()
             for pl in mfy_playlists:
                 if not pl:
@@ -228,62 +230,61 @@ class ContentTree(Tree):
                             "type": "context",
                             "context_type": "playlist",
                             "uri": uri,
-                            "name": pl.get("name", "Mix"),
+                            "name": pl.get("name"),
                             "metadata": {"artists": "Spotify Mix"},
                         }
                     )
                     seen_uris.add(uri)
-
             self.app.call_from_thread(self.store.set, "current_tracks", combined)
+            self.app.call_from_thread(self.ui_store.update, current_tracks=combined)
             self.app.call_from_thread(
                 self.store.set, "last_active_context", "made_for_you", persist=True
             )
             self.app.call_from_thread(lambda: self.app.query_one("TrackList").focus())
         finally:
-            current_l = self.store.get("loading_states") or {}
+            current_l = self.ui_store.get().get("loading_states") or {}
             self.app.call_from_thread(
-                self.store.set, "loading_states", {**current_l, "track_list": False}
+                self.ui_store.update, loading_states={**current_l, "track_list": False}
             )
 
     @work(exclusive=True, thread=True)
     def load_featured_hub(self):
         try:
-            current_l = self.store.get("loading_states") or {}
+            current_l = self.ui_store.get().get("loading_states") or {}
             self.app.call_from_thread(
-                self.store.set, "loading_states", {**current_l, "track_list": True}
+                self.ui_store.update, loading_states={**current_l, "track_list": True}
             )
             featured = self.network.discovery.get_featured_playlists()
             items = featured.get("items", [])
-            tracks = []
-            for pl in items:
-                if not pl:
-                    continue
-                tracks.append(
-                    {
-                        "type": "context",
-                        "context_type": "playlist",
-                        "uri": pl.get("uri"),
-                        "name": pl.get("name"),
-                        "metadata": {"artists": "Spotify Pick"},
-                    }
-                )
+            tracks = [
+                {
+                    "type": "context",
+                    "context_type": "playlist",
+                    "uri": pl.get("uri"),
+                    "name": pl.get("name"),
+                    "metadata": {"artists": "Spotify Pick"},
+                }
+                for pl in items
+                if pl
+            ]
             self.app.call_from_thread(self.store.set, "current_tracks", tracks)
+            self.app.call_from_thread(self.ui_store.update, current_tracks=tracks)
             self.app.call_from_thread(
                 self.store.set, "last_active_context", "featured_hub", persist=True
             )
             self.app.call_from_thread(lambda: self.app.query_one("TrackList").focus())
         finally:
-            current_l = self.store.get("loading_states") or {}
+            current_l = self.ui_store.get().get("loading_states") or {}
             self.app.call_from_thread(
-                self.store.set, "loading_states", {**current_l, "track_list": False}
+                self.ui_store.update, loading_states={**current_l, "track_list": False}
             )
 
     @work(exclusive=True, thread=True)
     def load_recently_played(self):
         try:
-            current_l = self.store.get("loading_states") or {}
+            current_l = self.ui_store.get().get("loading_states") or {}
             self.app.call_from_thread(
-                self.store.set, "loading_states", {**current_l, "track_list": True}
+                self.ui_store.update, loading_states={**current_l, "track_list": True}
             )
             api_tracks = self.network.library.get_recently_played()
             from src.core.activity_service import ActivityService
@@ -291,44 +292,47 @@ class ContentTree(Tree):
             activity_svc = Container.resolve(ActivityService)
             combined = activity_svc.get_combined_history(api_tracks)
             self.app.call_from_thread(self.store.set, "current_tracks", combined)
+            self.app.call_from_thread(self.ui_store.update, current_tracks=combined)
             self.app.call_from_thread(
                 self.store.set, "last_active_context", "recently_played", persist=True
             )
             self.app.call_from_thread(lambda: self.app.query_one("TrackList").focus())
         finally:
-            current_l = self.store.get("loading_states") or {}
+            current_l = self.ui_store.get().get("loading_states") or {}
             self.app.call_from_thread(
-                self.store.set, "loading_states", {**current_l, "track_list": False}
+                self.ui_store.update, loading_states={**current_l, "track_list": False}
             )
 
     @work(exclusive=True, thread=True)
     def load_liked_songs(self):
         try:
-            current_l = self.store.get("loading_states") or {}
+            current_l = self.ui_store.get().get("loading_states") or {}
             self.app.call_from_thread(
-                self.store.set, "loading_states", {**current_l, "track_list": True}
+                self.ui_store.update, loading_states={**current_l, "track_list": True}
             )
             tracks = self.network.library.get_liked_songs()
             self.app.call_from_thread(self.store.set, "current_tracks", tracks)
+            self.app.call_from_thread(self.ui_store.update, current_tracks=tracks)
             self.app.call_from_thread(
                 self.store.set, "last_active_context", "liked_songs", persist=True
             )
             self.app.call_from_thread(lambda: self.app.query_one("TrackList").focus())
         finally:
-            current_l = self.store.get("loading_states") or {}
+            current_l = self.ui_store.get().get("loading_states") or {}
             self.app.call_from_thread(
-                self.store.set, "loading_states", {**current_l, "track_list": False}
+                self.ui_store.update, loading_states={**current_l, "track_list": False}
             )
 
     @work(exclusive=True, thread=True)
     def load_playlist_tracks(self, playlist_id: str):
         try:
-            current_l = self.store.get("loading_states") or {}
+            current_l = self.ui_store.get().get("loading_states") or {}
             self.app.call_from_thread(
-                self.store.set, "loading_states", {**current_l, "track_list": True}
+                self.ui_store.update, loading_states={**current_l, "track_list": True}
             )
             tracks = self.network.library.get_playlist_tracks(playlist_id)
             self.app.call_from_thread(self.store.set, "current_tracks", tracks)
+            self.app.call_from_thread(self.ui_store.update, current_tracks=tracks)
             self.app.call_from_thread(
                 self.store.set,
                 "last_active_context",
@@ -337,7 +341,7 @@ class ContentTree(Tree):
             )
             self.app.call_from_thread(lambda: self.app.query_one("TrackList").focus())
         finally:
-            current_l = self.store.get("loading_states") or {}
+            current_l = self.ui_store.get().get("loading_states") or {}
             self.app.call_from_thread(
-                self.store.set, "loading_states", {**current_l, "track_list": False}
+                self.ui_store.update, loading_states={**current_l, "track_list": False}
             )

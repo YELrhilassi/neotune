@@ -70,12 +70,23 @@ class LocalPlayer:
     def is_running(self) -> bool:
         """Check if player process is running.
 
-        Returns:
-            True if process is active
+        Checks internal process object first, then does a best-effort system check.
         """
-        if self.process is None:
-            return False
-        return self.process.poll() is None
+        if self.process is not None:
+            return self.process.poll() is None
+
+        # Fallback: check if any librespot process exists on the system
+        try:
+            for proc in psutil.process_iter(["name", "cmdline"]):
+                name = (proc.info.get("name") or "").lower()
+                cmdline = proc.info.get("cmdline") or []
+                if "librespot" in name or any("librespot" in arg.lower() for arg in cmdline):
+                    # Make sure it's not a python script
+                    if not any(arg.endswith(".py") or "python" in arg.lower() for arg in cmdline):
+                        return True
+        except:
+            pass
+        return False
 
     def stop_existing(self, wait: bool = True) -> None:
         """Kill any existing librespot processes with multiple passes."""

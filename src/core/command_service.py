@@ -166,6 +166,13 @@ class ShowDeviceCommand(Command):
                         )
                         app.store.set("preferred_device_name", device_name)
 
+                        # Update Device Store
+                        from src.state.feature_stores import DeviceStore
+
+                        Container.resolve(DeviceStore).update(
+                            preferred_id=device_id, preferred_name=device_name
+                        )
+
                         def _transfer_worker():
                             nw = Container.resolve(SpotifyNetwork)
                             nw.transfer_playback(device_id)
@@ -175,7 +182,7 @@ class ShowDeviceCommand(Command):
                         threading.Thread(target=_transfer_worker, daemon=True).start()
 
                 app.call_from_thread(
-                    app.push_screen, DeviceSelector(devices, active_id), _on_device_selected
+                    app.safe_push_screen, DeviceSelector(devices, active_id), _on_device_selected
                 )
             else:
                 app.call_from_thread(app.notify, "No devices found", severity="warning")
@@ -195,14 +202,62 @@ class ShowAudioCommand(Command):
                 prefs.audio_config.update(config)
                 app.notify(f"Audio backend set to: {config['backend']}")
 
+                # Update Config Store
+                from src.state.feature_stores import ConfigStore
+
+                Container.resolve(ConfigStore).update(audio=prefs.audio_config)
+
                 # Restart player if running
+
                 player = Container.resolve(LocalPlayer)
                 nw = Container.resolve(SpotifyNetwork)
                 if player.is_running():
                     token = nw.get_access_token()
                     player.restart(access_token=token)
 
-        app.push_screen(AudioConfigSelector(prefs.audio_config), _on_config_selected)
+        app.safe_push_screen(AudioConfigSelector(prefs.audio_config), _on_config_selected)
+
+
+class SearchCommand(Command):
+    def execute(self, app, *args, **kwargs):
+        from src.ui.modals.telescope import TelescopePrompt
+
+        app.safe_push_screen(TelescopePrompt())
+
+
+class RestartDaemonCommand(Command):
+    def execute(self, app, *args, **kwargs):
+        player = Container.resolve(LocalPlayer)
+        nw = Container.resolve(SpotifyNetwork)
+        app.notify("Restarting playback daemon...")
+        token = nw.get_access_token()
+        player.restart(access_token=token)
+
+
+class CommandPromptCommand(Command):
+    def execute(self, app, *args, **kwargs):
+        from src.ui.modals.command_prompt import CommandPrompt
+
+        app.safe_push_screen(CommandPrompt())
+
+
+class ThemeSelectorCommand(Command):
+    def execute(self, app, *args, **kwargs):
+        from src.ui.modals.theme_selector import ThemeSelector
+
+        prefs = Container.resolve(UserPreferences)
+
+        def _on_theme_selected(theme):
+            if theme:
+                prefs.theme = theme
+                app.apply_theme(theme)
+                app.notify(f"Theme set to: {theme}")
+                # Update UI store for any other interested components
+                from src.state.feature_stores import ConfigStore
+
+                Container.resolve(ConfigStore).update(theme=theme)
+
+        app.safe_push_screen(ThemeSelector(prefs.theme), _on_theme_selected)
 
 
 class CommandService:
@@ -220,6 +275,10 @@ class CommandService:
             ("recommendations", RecommendationsCommand()),
             ("show_device", ShowDeviceCommand()),
             ("show_audio", ShowAudioCommand()),
+            ("search_prompt", SearchCommand()),
+            ("restart_daemon", RestartDaemonCommand()),
+            ("command_prompt", CommandPromptCommand()),
+            ("theme_selector", ThemeSelectorCommand()),
             (
                 "refresh",
                 type("Refresh", (Command,), {"execute": lambda s, a, *args: a.refresh_data()})(),

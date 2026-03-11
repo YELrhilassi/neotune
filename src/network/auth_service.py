@@ -47,6 +47,17 @@ class AuthService:
             token = self._auth_manager.get_access_token(code, as_dict=False)
             if token:
                 self._debug.info("AuthService", "Login successful")
+
+                try:
+                    from src.state.feature_stores import NetworkStore
+                    from src.core.di import Container
+
+                    Container.resolve(NetworkStore).update(
+                        is_authenticated=True, api_connected=True
+                    )
+                except:
+                    pass
+
                 return spotipy.Spotify(auth_manager=self._auth_manager)
         except Exception as e:
             msg = f"Login failed: {e}"

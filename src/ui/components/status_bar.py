@@ -7,9 +7,10 @@ from src.state.store import Store
 from src.core.icons import Icons
 
 
-class StatusBar(Static):
-    mode = reactive("NORMAL")
+from src.state.feature_stores import PlaybackStore, NetworkStore, DeviceStore, ConfigStore, UIStore
 
+
+class StatusBar(Static):
     def compose(self) -> ComposeResult:
         with Horizontal(id="status-container"):
             # Left: Mode and Device
@@ -35,16 +36,21 @@ class StatusBar(Static):
 
         self.user_prefs = Container.resolve(UserPreferences)
 
-        # Subscribe to specific keys that affect status bar
-        self.store.subscribe("current_playback", lambda _: self.safe_update())
-        self.store.subscribe("api_connected", lambda _: self.safe_update())
-        self.store.subscribe("is_authenticated", lambda _: self.safe_update())
-        self.store.subscribe("preferred_device_name", lambda _: self.safe_update())
-        self.store.subscribe("devices", lambda _: self.safe_update())
+        # Resolve Feature Stores
+        self.playback_store = Container.resolve(PlaybackStore)
+        self.network_store = Container.resolve(NetworkStore)
+        self.device_store = Container.resolve(DeviceStore)
+        self.config_store = Container.resolve(ConfigStore)
+        self.ui_store = Container.resolve(UIStore)
 
-        # Also poll occasionally as fallback
+        # Subscribe to Feature Stores
+        self.playback_store.subscribe(lambda _: self.safe_update())
+        self.network_store.subscribe(lambda _: self.safe_update())
+        self.device_store.subscribe(lambda _: self.safe_update())
+        self.config_store.subscribe(lambda _: self.safe_update())
+        self.ui_store.subscribe(lambda _: self.safe_update())
 
-        self.set_interval(5.0, self.update_status)
+        # Mode is still reactive via Textual
         self.update_status()
 
     def safe_update(self):
@@ -78,8 +84,10 @@ class StatusBar(Static):
             conn_sep = self.query_one("#status-connection-sep", Label)
 
             # 1. Update Mode
-            mode_lbl.update(f" {self.mode} ")
-            mode_key = self.mode.lower()
+            ui_state = self.ui_store.get()
+            current_mode = ui_state.get("mode", "NORMAL")
+            mode_lbl.update(f" {current_mode} ")
+            mode_key = current_mode.lower()
 
             # Reset and apply mode class
             for m in ["normal", "leader", "search"]:
@@ -91,22 +99,24 @@ class StatusBar(Static):
                     mode_sep.remove_class(m)
 
             # 2. Update Device Info
-            playback = self.store.get("current_playback")
-            device_name = "No Device"
-            if playback and playback.get("device"):
-                device_name = playback["device"].get("name", "Unknown")
-            elif self.store.get("preferred_device_name"):
-                device_name = self.store.get("preferred_device_name")
+            device_state = self.device_store.get()
+            device_name = device_state.get("preferred_name") or "No Device"
+
+            # If nothing is actually playing, playback might show a different device or None
+            # But the user wants the selected device.
 
             device_lbl.update(f" {Icons.DEVICE} {device_name} ")
 
             # 3. Update Quality (from config)
-            bitrate = self.user_prefs.audio_config.get("bitrate", "320")
+            config_state = self.config_store.get()
+            audio_cfg = config_state.get("audio", {})
+            bitrate = audio_cfg.get("bitrate", self.user_prefs.audio_config.get("bitrate", "320"))
             quality_lbl.update(f" 󰓇 {bitrate}kbps ")
 
             # 4. Update Connection Status
-            is_auth = self.store.get("is_authenticated")
-            is_connected = bool(self.store.get("api_connected"))
+            net_state = self.network_store.get()
+            is_auth = net_state.get("is_authenticated")
+            is_connected = net_state.get("api_connected")
 
             final_connected = is_auth and is_connected
 

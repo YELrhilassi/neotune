@@ -19,7 +19,7 @@ class PlaybackService(SpotifyServiceBase):
 
         self._last_devices = []
         self._last_devices_time = 0
-        self._devices_cache_ttl = 30.0  # Devices change very rarely
+        self._devices_cache_ttl = 5.0  # Reduced TTL for better responsiveness
 
         self._lock = threading.Lock()
 
@@ -75,6 +75,19 @@ class PlaybackService(SpotifyServiceBase):
             # Update cache
             self._last_playback_state = state
             self._last_state_time = now
+
+            # Direct Store Update for Reactive UI
+            try:
+                from src.state.feature_stores import PlaybackStore, DeviceStore
+
+                Container.resolve(PlaybackStore).set(state)
+                if state and state.get("device"):
+                    Container.resolve(DeviceStore).update(
+                        preferred_name=state["device"].get("name")
+                    )
+            except:
+                pass
+
             return state
 
     def _record_activity_from_state(self, state: dict[str, Any]):
@@ -189,6 +202,15 @@ class PlaybackService(SpotifyServiceBase):
             devices = result.get("devices", []) if result else []
             self._last_devices = devices
             self._last_devices_time = now
+
+            # Direct Store Update
+            try:
+                from src.state.feature_stores import DeviceStore
+
+                Container.resolve(DeviceStore).update(available=devices)
+            except:
+                pass
+
             return devices
 
     def find_fallback_device(self) -> Optional[str]:
@@ -349,3 +371,15 @@ class PlaybackService(SpotifyServiceBase):
             force_play=force_play,
             track_name="transfer_playback",
         )
+
+        # Best effort name update if we have the devices list
+        try:
+            from src.state.feature_stores import DeviceStore
+
+            ds = Container.resolve(DeviceStore)
+            devices = ds.get().get("available", [])
+            name = next((d["name"] for d in devices if d["id"] == device_id), None)
+            if name:
+                ds.update(preferred_id=device_id, preferred_name=name)
+        except:
+            pass

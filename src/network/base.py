@@ -98,9 +98,11 @@ class SpotifyServiceBase:
             # 3. Track success
             try:
                 from src.state.store import Store
+                from src.state.feature_stores import NetworkStore
                 from src.core.di import Container as DIContainer
 
-                DIContainer.resolve(Store).set("api_connected", False)
+                DIContainer.resolve(Store).set("api_connected", True)
+                DIContainer.resolve(NetworkStore).update(api_connected=True, is_authenticated=True)
             except:
                 pass
 
@@ -138,8 +140,11 @@ class SpotifyServiceBase:
 
             try:
                 from src.state.store import Store
+                from src.state.feature_stores import NetworkStore
+                from src.core.di import Container as DIContainer
 
-                Container.resolve(Store).set("api_connected", False)
+                DIContainer.resolve(Store).set("api_connected", False)
+                DIContainer.resolve(NetworkStore).update(api_connected=False)
             except:
                 pass
 
@@ -160,8 +165,11 @@ class SpotifyServiceBase:
 
             try:
                 from src.state.store import Store
+                from src.state.feature_stores import NetworkStore
+                from src.core.di import Container as DIContainer
 
-                Container.resolve(Store).set("api_connected", False)
+                DIContainer.resolve(Store).set("api_connected", False)
+                DIContainer.resolve(NetworkStore).update(api_connected=False)
             except:
                 pass
 

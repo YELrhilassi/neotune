@@ -34,6 +34,12 @@ def useSwitchToLocalPlayer(app, force=False):
                 store.set("preferred_device_id", dev_id)
                 store.set("preferred_device_name", target_device["name"])
 
+                from src.state.feature_stores import DeviceStore
+
+                Container.resolve(DeviceStore).update(
+                    preferred_id=dev_id, preferred_name=target_device["name"]
+                )
+
                 # Check current state (internally cached)
                 playback = playback_svc.get_current_playback()
                 is_playing = bool(playback and playback.get("is_playing"))

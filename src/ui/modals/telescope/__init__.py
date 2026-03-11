@@ -22,6 +22,7 @@ from src.hooks.useSpotifySearch import useSpotifySearch
 from src.hooks.useFetchAlbumTracks import useFetchAlbumTracks
 from src.hooks.useFetchPlaylistTracks import useFetchPlaylistTracks
 
+
 class TelescopePrompt(BaseModal[str]):
     BINDINGS = [
         Binding("escape", "handle_escape", "Normal Mode / Close"),
@@ -36,30 +37,34 @@ class TelescopePrompt(BaseModal[str]):
     def __init__(self, initial_query: str = ""):
         super().__init__()
         self.cache = Container.resolve(CacheStore)
-        
+
         saved_state = self.cache.get("telescope_state") or {}
-        
+
         if not initial_query and saved_state.get("query"):
             self.initial_query = saved_state["query"]
-            self.results_data = saved_state.get("results") or {"tracks": [], "albums": [], "playlists": []}
+            self.results_data = saved_state.get("results") or {
+                "tracks": [],
+                "albums": [],
+                "playlists": [],
+            }
         else:
             self.initial_query = initial_query
             self.results_data = {"tracks": [], "albums": [], "playlists": []}
-            
+
         self.preview_data = []
 
     def on_mount(self):
         self.header = self.query_one(TelescopeHeader)
         self.input = self.header.query_one(TelescopeInput)
-        
+
         self.input.focus()
         if self.initial_query:
             self.input.value = self.initial_query
             self.input.cursor_position = len(self.initial_query)
-            
+
         self.search_timer = None
         self.fetch_timer = None
-        
+
         if self.results_data and any(self.results_data.values()):
             self.set_timer(0.1, self._refresh_all_lists)
 
@@ -89,7 +94,9 @@ class TelescopePrompt(BaseModal[str]):
 
     @property
     def results_list(self) -> OptionList:
-        return self.query_one(f"#results-{self.active_category} .telescope-results-list", OptionList)
+        return self.query_one(
+            f"#results-{self.active_category} .telescope-results-list", OptionList
+        )
 
     @property
     def preview(self) -> TelescopePreview:
@@ -112,7 +119,7 @@ class TelescopePrompt(BaseModal[str]):
             preview_list = self.preview_list
         except Exception:
             return
-            
+
         if message.direction == "next":
             results_list.focus()
         elif message.direction == "prev":
@@ -200,10 +207,7 @@ class TelescopePrompt(BaseModal[str]):
 
     def _handle_search_results(self, results):
         self.results_data = results
-        self.cache.set("telescope_state", {
-            "query": self.input.value,
-            "results": results
-        })
+        self.cache.set("telescope_state", {"query": self.input.value, "results": results})
         self._refresh_all_lists()
 
     def _refresh_all_lists(self):
@@ -229,19 +233,24 @@ class TelescopePrompt(BaseModal[str]):
             preview = self.preview
         except Exception:
             return
-            
+
         if event.option_list != results_list:
             return
 
         current_data = self.results_data.get(self.active_category, [])
-        if not current_data or event.option_index is None or event.option_index >= len(current_data):
+        if (
+            not current_data
+            or event.option_index is None
+            or event.option_index >= len(current_data)
+        ):
             return
-            
+
         data = current_data[event.option_index]
         preview.update_preview(self.active_category, data)
-        
-        if self.fetch_timer: self.fetch_timer.stop()
-        
+
+        if self.fetch_timer:
+            self.fetch_timer.stop()
+
         if self.active_category in ["albums", "playlists"]:
             try:
                 preview.query_one(".telescope-preview-tracks", OptionList).loading = True
@@ -249,19 +258,23 @@ class TelescopePrompt(BaseModal[str]):
                 pass
 
         if self.active_category == "albums":
-            self.fetch_timer = self.set_timer(0.4, lambda: self.fetch_album_details(data.get('id')))
+            self.fetch_timer = self.set_timer(0.4, lambda: self.fetch_album_details(data.get("id")))
         elif self.active_category == "playlists":
-            self.fetch_timer = self.set_timer(0.4, lambda: self.fetch_playlist_details(data.get('id')))
+            self.fetch_timer = self.set_timer(
+                0.4, lambda: self.fetch_playlist_details(data.get("id"))
+            )
 
     @work(exclusive=True, thread=True)
     def fetch_album_details(self, album_id: str):
-        if not album_id: return
+        if not album_id:
+            return
         tracks = useFetchAlbumTracks(album_id)
         self.app.call_from_thread(self._handle_preview_tracks, tracks)
 
     @work(exclusive=True, thread=True)
     def fetch_playlist_details(self, playlist_id: str):
-        if not playlist_id: return
+        if not playlist_id:
+            return
         tracks = useFetchPlaylistTracks(playlist_id)
         self.app.call_from_thread(self._handle_preview_tracks, tracks)
 
@@ -280,11 +293,11 @@ class TelescopePrompt(BaseModal[str]):
             results_list = self.results_list
         except Exception:
             return
-            
+
         if event.option_list == preview_list:
             if not self.preview_data or event.option_index >= len(self.preview_data):
                 return
-            
+
             track_data = self.preview_data[event.option_index]
             uri = track_data.get("uri")
             if uri:
@@ -294,84 +307,106 @@ class TelescopePrompt(BaseModal[str]):
                     try:
                         results_idx = results_list.highlighted
                         if results_idx is not None:
-                            parent_data = self.results_data.get(self.active_category, [])[results_idx]
+                            parent_data = self.results_data.get(self.active_category, [])[
+                                results_idx
+                            ]
                             context_uri = parent_data.get("uri")
                     except Exception:
                         pass
-                        
+
                 from src.hooks.usePlayTrack import usePlayTrack
-                if usePlayTrack(uri, self.app, context_uri=context_uri): 
+
+                if usePlayTrack(uri, self.app, context_uri=context_uri):
                     self.app.update_now_playing()
             return
-            
+
         if event.option_list == results_list:
             self._handle_selection(event.option_index)
 
     def _handle_selection(self, index: int):
         current_data = self.results_data.get(self.active_category, [])
-        if not current_data or index >= len(current_data): return
+        if not current_data or index >= len(current_data):
+            return
         data = current_data[index]
         uri = data.get("uri")
-        if not uri: return
+        if not uri:
+            return
 
         def generic_action_handler(action: str, uri: str):
             import threading
+
             def _worker():
-                if not action: return
+                if not action:
+                    return
                 from src.hooks.usePlayTrack import usePlayTrack
                 from src.hooks.useTrackRadio import useTrackRadio
                 from src.hooks.useSaveTrack import useSaveTrack
                 from src.hooks.useRemoveTrack import useRemoveTrack
-                
+
                 if action == "play":
-                    # Use properly engineered native playback. If it's a playlist or album, 
+                    # Use properly engineered native playback. If it's a playlist or album,
                     # Spotify will natively handle continuous playback using the context_uri.
                     # If it's a single track from search, it plays just that track.
                     context_uri = uri if self.active_category in ["albums", "playlists"] else None
                     if context_uri:
-                        if usePlayTrack(uri, self.app, context_uri=context_uri): 
+                        if usePlayTrack(uri, self.app, context_uri=context_uri):
                             self.app.call_from_thread(self.app.update_now_playing)
                     else:
-                        if usePlayTrack(uri, self.app): 
+                        if usePlayTrack(uri, self.app):
                             self.app.call_from_thread(self.app.update_now_playing)
-                elif action == "radio": useTrackRadio(uri, self.app)
-                elif action == "save": useSaveTrack(uri, self.app)
-                elif action == "remove": useRemoveTrack(uri, self.app)
+                elif action == "radio":
+                    useTrackRadio(uri, self.app)
+                elif action == "save":
+                    useSaveTrack(uri, self.app)
+                elif action == "remove":
+                    useRemoveTrack(uri, self.app)
+
             threading.Thread(target=_worker, daemon=True).start()
 
         name = data.get("name", "Unknown")
         if self.active_category == "tracks":
-            artists = ", ".join([a['name'] for a in data.get('artists', [])])
+            artists = ", ".join([a["name"] for a in data.get("artists", [])])
             display_name = f"{strip_icons(name)} by {strip_icons(artists)}"
         else:
             display_name = strip_icons(name)
 
-        self.app.push_screen(TrackMenuPopup(uri, display_name), lambda act: generic_action_handler(act, uri))
+        self.app.push_screen(
+            TrackMenuPopup(uri, display_name), lambda act: generic_action_handler(act, uri)
+        )
 
     def on_unmount(self):
         try:
-            from src.ui.components.status_bar import StatusBar
-            self.app.query_one(StatusBar).mode = "NORMAL"
-        except Exception: pass
+            from src.state.feature_stores import UIStore
+            from src.core.di import Container
+
+            Container.resolve(UIStore).update(mode="NORMAL")
+        except Exception:
+            pass
 
     def on_key(self, event: events.Key):
         if self.input.has_focus:
             return
 
         focused_widget = self.focused
-        if focused_widget is None: return
+        if focused_widget is None:
+            return
 
         if event.character == "j":
-            if hasattr(focused_widget, "action_cursor_down"): focused_widget.action_cursor_down()
+            if hasattr(focused_widget, "action_cursor_down"):
+                focused_widget.action_cursor_down()
             event.prevent_default()
         elif event.character == "k":
-            if hasattr(focused_widget, "action_cursor_up"): focused_widget.action_cursor_up()
-            else: self.input.focus()
+            if hasattr(focused_widget, "action_cursor_up"):
+                focused_widget.action_cursor_up()
+            else:
+                self.input.focus()
             event.prevent_default()
         elif event.character == "h":
             try:
-                if focused_widget == self.preview_list: self.results_list.focus()
-                else: self.input.focus()
+                if focused_widget == self.preview_list:
+                    self.results_list.focus()
+                else:
+                    self.input.focus()
             except Exception:
                 pass
             event.prevent_default()
@@ -383,8 +418,10 @@ class TelescopePrompt(BaseModal[str]):
                 pass
             event.prevent_default()
         elif event.character == "U":
-            if hasattr(focused_widget, "action_page_up"): focused_widget.action_page_up()
+            if hasattr(focused_widget, "action_page_up"):
+                focused_widget.action_page_up()
             event.prevent_default()
         elif event.character == "D":
-            if hasattr(focused_widget, "action_page_down"): focused_widget.action_page_down()
+            if hasattr(focused_widget, "action_page_down"):
+                focused_widget.action_page_down()
             event.prevent_default()

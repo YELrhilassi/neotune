@@ -3,10 +3,10 @@ from textual.widgets import Static, Label
 from textual.containers import Horizontal, Vertical
 from src.core.di import Container
 from src.state.store import Store
-from src.models.types import PlaybackDict
 from src.core.utils import strip_icons
 from src.core.icons import Icons
 from src.core.strings import Strings
+from src.state.feature_stores import PlaybackStore, DeviceStore
 
 
 class NowPlaying(Static):
@@ -24,9 +24,13 @@ class NowPlaying(Static):
 
     def on_mount(self):
         self.store = Container.resolve(Store)
-        self.store.subscribe("current_playback", self.safe_update_playback)
+        self.playback_store = Container.resolve(PlaybackStore)
+        self.device_store = Container.resolve(DeviceStore)
 
-    def safe_update_playback(self, playback: PlaybackDict | None):
+        self.playback_store.subscribe(self.safe_update_playback)
+        self.device_store.subscribe(lambda _: self.safe_update_playback(self.playback_store.get()))
+
+    def safe_update_playback(self, playback: dict | None):
         """Thread-safe update."""
         if not self.app:
             return
@@ -38,8 +42,7 @@ class NowPlaying(Static):
         else:
             self.app.call_from_thread(self.update_playback, playback)
 
-    def update_playback(self, playback: PlaybackDict | None):
-        # Fail gracefully if widgets are not yet mounted during early intervals
+    def update_playback(self, playback: dict | None):
         try:
             track_lbl = self.query_one("#np-track-name", Label)
             artist_lbl = self.query_one("#np-artist-name", Label)
@@ -50,10 +53,13 @@ class NowPlaying(Static):
 
         if playback and playback.get("is_playing") and playback.get("item"):
             item = playback["item"]
-            artists = strip_icons(", ".join([a["name"] for a in item["artists"]]))
-            track_name = strip_icons(item["name"])
+            if not isinstance(item, dict):
+                return
 
-            # Formatting states
+            artists_list = item.get("artists", [])
+            artists = strip_icons(", ".join([a.get("name", "Unknown") for a in artists_list]))
+            track_name = strip_icons(item.get("name", "Unknown Track"))
+
             shuffle_icon = Icons.SHUFFLE_ON if playback.get("shuffle_state") else Icons.SHUFFLE_OFF
             repeat_state = playback.get("repeat_state", "off")
             repeat_icon = (
@@ -67,7 +73,8 @@ class NowPlaying(Static):
             shuffle_lbl.update(f"[#89b4fa] {shuffle_icon} [/]")
             repeat_lbl.update(f"[#89b4fa] {repeat_icon} [/]")
         else:
-            device_name = self.store.get("preferred_device_name") or "No Active Device"
+            device_state = self.device_store.get()
+            device_name = device_state.get("preferred_name") or "No Active Device"
             track_lbl.update(
                 f"[dim]{Icons.PAUSE} {Strings.PAUSED_OR_NOTHING}[/] [bold #89b4fa]({device_name})[/]"
             )

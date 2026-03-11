@@ -2,7 +2,6 @@ import uuid
 from typing import Dict, Any, List, Optional, cast, TYPE_CHECKING
 from textual.widgets import DataTable
 from textual import on, events
-from textual.binding import Binding
 from src.core.di import Container
 from src.state.store import Store
 from src.ui.modals.track_menu import TrackMenuPopup
@@ -15,22 +14,18 @@ from src.hooks.track_actions import (
 from src.core.utils import strip_icons
 from src.core.icons import Icons
 from src.core.strings import Strings
+from src.state.feature_stores import UIStore
+from src.core.debug_logger import DebugLogger
 
 if TYPE_CHECKING:
     from src.ui.terminal_renderer import TerminalRenderer
 
 
 class TrackList(DataTable):
-    """
-    Main component for displaying track lists.
-    """
-
-    # We do NOT override BINDINGS with an empty list.
-    # DataTable handles enter (select-row) by default.
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.track_data_map: Dict[str, Any] = {}
+        self.debug = DebugLogger()
 
     def on_mount(self):
         self.border_title = Strings.TRACKS_TITLE
@@ -42,15 +37,17 @@ class TrackList(DataTable):
         )
         self.cursor_type = "row"
         self.store = Container.resolve(Store)
+        self.ui_store = Container.resolve(UIStore)
+        self.ui_store.subscribe(self.handle_ui_change)
 
-        self.store.subscribe("current_tracks", self.safe_load_tracks)
-        self.store.subscribe("loading_states", self._handle_loading)
+    def handle_ui_change(self, state: dict):
+        tracks = state.get("current_tracks", [])
+        self.safe_load_tracks(tracks)
+        self._handle_loading(state.get("loading_states", {}))
 
     def safe_load_tracks(self, tracks: list):
-        """Thread-safe entry point for load_tracks."""
         if not self.app:
             return
-
         import threading
 
         if threading.current_thread() is threading.main_thread():
@@ -59,126 +56,102 @@ class TrackList(DataTable):
             self.app.call_from_thread(self.load_tracks, tracks)
 
     def _handle_loading(self, states):
-        if states:
+        if states and self.app:
             loading = states.get("track_list", False)
-            if self.app:
-                import threading
+            import threading
 
-                if threading.current_thread() is threading.main_thread():
-                    self.loading = loading
-                else:
-                    self.app.call_from_thread(setattr, self, "loading", loading)
-
-    def get_highlighted_track_data(self) -> Optional[dict]:
-        """Return the data for the currently highlighted row."""
-        if self.cursor_row is not None:
-            # DataTable doesn't give us the row key directly from index easily in all versions
-            # We'll use our internal mapping
-            keys = list(self.track_data_map.keys())
-            if 0 <= self.cursor_row < len(keys):
-                return self.track_data_map[keys[self.cursor_row]]
-        return None
+            if threading.current_thread() is threading.main_thread():
+                self.loading = loading
+            else:
+                self.app.call_from_thread(setattr, self, "loading", loading)
 
     def load_tracks(self, tracks: list):
+        self.debug.debug(
+            "TrackList", f"load_tracks called with {len(tracks) if tracks else 0} items"
+        )
         self.clear()
+        self.track_data_map = {}
         if not tracks:
             return
 
-        self.track_data_map = {}
-
         for item in tracks:
-            if not item or not isinstance(item, dict):
-                continue
+            try:
+                if not item or not isinstance(item, dict):
+                    continue
 
-            # Handle unified history format (type: context or track)
-            if item.get("type") == "context":
-                uri = item.get("uri", "")
-                name = item.get("name", "Unknown Context")
-                ctype = item.get("context_type", "Context")
-                metadata = item.get("metadata", {})
+                # Context Type (Playlist/Album)
+                if item.get("type") == "context":
+                    uri = item.get("uri", "")
+                    name = item.get("name", "Unknown Context")
+                    ctype = item.get("context_type", "playlist")
+                    metadata = item.get("metadata", {})
+                    unique_key = f"{uri}_{uuid.uuid4().hex[:8]}"
+                    self.track_data_map[unique_key] = item
+                    icon = Icons.PLAYLIST if ctype == "playlist" else Icons.ALBUM
+                    artist_display = metadata.get("artists") or f"[{ctype.capitalize()}]"
+                    self.add_row(
+                        f"{icon} {strip_icons(name)}",
+                        artist_display,
+                        "Playlist" if ctype == "playlist" else strip_icons(name),
+                        "-",
+                        key=unique_key,
+                    )
+                    continue
 
+                # Track Type
+                track = item.get("track") if "track" in item else item
+                if not track or not isinstance(track, dict) or "name" not in track:
+                    continue
+
+                artists_list = track.get("artists", [])
+                if isinstance(artists_list, list):
+                    artists = ", ".join(
+                        [strip_icons(a.get("name", "Unknown")) for a in artists_list]
+                    )
+                else:
+                    artists = "Unknown Artist"
+
+                duration_ms = track.get("duration_ms", 0)
+                duration_str = f"{duration_ms // 60000}:{(duration_ms % 60000) // 1000:02d}"
+
+                uri = track.get("uri", "unknown")
                 unique_key = f"{uri}_{uuid.uuid4().hex[:8]}"
-                self.track_data_map[unique_key] = item
+                self.track_data_map[unique_key] = track
 
-                icon = Icons.PLAYLIST if ctype == "playlist" else Icons.ALBUM
-
-                artist_display = metadata.get("artists")
-                if not artist_display:
-                    artist_display = f"[{ctype.capitalize()}]"
+                album_name = "Unknown Album"
+                if track.get("album"):
+                    album_name = track["album"].get("name", "Unknown Album")
 
                 self.add_row(
-                    f"{icon} {strip_icons(name)}",
-                    artist_display,
-                    "Playlist" if ctype == "playlist" else strip_icons(name),
-                    "-",
+                    f"{Icons.TRACK} {strip_icons(track['name'])}",
+                    artists,
+                    strip_icons(album_name),
+                    duration_str,
                     key=unique_key,
                 )
+            except Exception as e:
+                self.debug.error("TrackList", f"Row load error: {e}")
                 continue
 
-            track = item.get("track", item)
-            if not track or not isinstance(track, dict) or "name" not in track:
-                continue
-
-            artists_list = track.get("artists", [])
-            if isinstance(artists_list, list):
-                artists = ", ".join([strip_icons(a.get("name", "")) for a in artists_list])
-            else:
-                artists = "Unknown Artist"
-            duration_ms = track.get("duration_ms", 0)
-            duration_min = duration_ms // 60000
-            duration_sec = (duration_ms % 60000) // 1000
-            duration_str = f"{duration_min}:{duration_sec:02d}"
-
-            # Use UUID to prevent DuplicateKey error
-            t_uri = track.get("uri", "unknown")
-            unique_key = f"{t_uri}_{uuid.uuid4().hex[:8]}"
-            self.track_data_map[unique_key] = track
-
-            # Add track row with icon
-            self.add_row(
-                f"{Icons.TRACK} {strip_icons(track['name'])}",
-                artists,
-                strip_icons(track.get("album", {}).get("name", "Unknown")),
-                duration_str,
-                key=unique_key,
-            )
+        self.debug.debug("TrackList", f"Finished loading {len(self.track_data_map)} rows")
 
     @on(DataTable.RowSelected)
     def handle_row_selection(self, event: DataTable.RowSelected):
-        """Standard handler for Enter or Click on a row."""
         key = event.row_key.value
         if not key:
             return
-
         item_data = self.track_data_map.get(key)
         if not item_data:
             return
 
-        # Handle Context Rows (Playlist/Album)
         if item_data.get("type") == "context":
             uri = item_data.get("uri")
-            from src.ui.terminal_renderer import TerminalRenderer
-
-            if not isinstance(self.app, TerminalRenderer):
-                return
-            app = cast(TerminalRenderer, self.app)
 
             def _play_context():
-                from src.hooks.track_actions import play_track
-
-                # Check if it looks like a valid playable context
                 if not uri or ":" not in uri:
-                    app.notify("Invalid playlist/album URI", severity="error")
                     return
-
-                if play_track(uri, app):
-                    app.call_from_thread(cast(Any, app).update_now_playing)
-                else:
-                    # If playback failed, maybe it's an unresponsive "ghost"
-                    # We'll notify the user and suggest refreshing
-                    app.notify(
-                        "Could not play this item. It might be unavailable.", severity="warning"
-                    )
+                if play_track(uri, self.app):
+                    self.app.call_from_thread(self.app.update_now_playing)
 
             import threading
 
@@ -188,48 +161,43 @@ class TrackList(DataTable):
         track_data = item_data
         artists = ", ".join([a.get("name", "") for a in track_data.get("artists", [])])
         display_name = f"{track_data.get('name', 'Unknown')} by {artists}"
-
         context_uri = self.store.get("last_active_context")
 
         def on_action_selected(action: Optional[str]):
             if not action:
                 return
 
-            import threading
-            from src.ui.terminal_renderer import TerminalRenderer
-
-            if not isinstance(self.app, TerminalRenderer):
-                return
-            app = cast(TerminalRenderer, self.app)
-
             def _worker():
                 if action == "play":
-                    if (
-                        context_uri
-                        and context_uri != "liked_songs"
-                        and context_uri != "recently_played"
-                    ):
-                        if play_track(track_data["uri"], app, context_uri=context_uri):
-                            app.call_from_thread(app.update_now_playing)
+                    if context_uri and context_uri not in ["liked_songs", "recently_played"]:
+                        if play_track(track_data["uri"], self.app, context_uri=context_uri):
+                            self.app.call_from_thread(self.app.update_now_playing)
                     else:
-                        # Fallback for search results or liked songs
                         all_uris = [
                             t.get("uri") for t in self.track_data_map.values() if t.get("uri")
                         ]
                         try:
-                            keys_list = list(self.track_data_map.keys())
-                            offset_pos = keys_list.index(key)
-                        except ValueError:
+                            offset_pos = list(self.track_data_map.keys()).index(key)
+                        except:
                             offset_pos = 0
-                        if play_track(all_uris, app, offset_position=offset_pos):
-                            app.call_from_thread(app.update_now_playing)
+                        if play_track(all_uris, self.app, offset_position=offset_pos):
+                            self.app.call_from_thread(self.app.update_now_playing)
                 elif action == "radio":
-                    start_track_radio(track_data["uri"], app)
+                    start_track_radio(track_data["uri"], self.app)
                 elif action == "save":
-                    save_track(track_data["uri"], app)
+                    save_track(track_data["uri"], self.app)
                 elif action == "remove":
-                    remove_saved_track(track_data["uri"], app)
+                    remove_saved_track(track_data["uri"], self.app)
+
+            import threading
 
             threading.Thread(target=_worker, daemon=True).start()
 
         self.app.push_screen(TrackMenuPopup(track_data["uri"], display_name), on_action_selected)
+
+    def get_highlighted_track_data(self) -> Optional[dict]:
+        if self.cursor_row is not None:
+            keys = list(self.track_data_map.keys())
+            if 0 <= self.cursor_row < len(keys):
+                return self.track_data_map[keys[self.cursor_row]]
+        return None

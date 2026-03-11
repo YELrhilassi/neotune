@@ -1,4 +1,5 @@
 import time
+import threading
 from typing import Dict, Any, List, Optional, cast, Literal, Set, TYPE_CHECKING
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal
@@ -7,6 +8,8 @@ from textual import events, work, on
 
 from src.core.di import Container
 from src.state.store import Store
+from src.state.feature_stores import PlaybackStore, NetworkStore, DeviceStore, UIStore, ConfigStore
+from src.state.pubsub import PubSub
 from src.network.spotify_network import SpotifyNetwork
 from src.network.local_player import LocalPlayer
 from src.config.user_prefs import UserPreferences
@@ -31,7 +34,6 @@ if TYPE_CHECKING:
     from textual.screen import Screen
     from textual.widget import Widget
 
-# Define SeverityLevel type alias
 SeverityLevel = Literal["information", "warning", "error"]
 
 
@@ -47,7 +49,6 @@ class TerminalRenderer(App):
         "../../styles/_onboarding.tcss",
     ]
 
-    # ONLY core system bindings. NO Space binding here.
     BINDINGS = [
         Binding("tab", "focus_next", "Focus Next"),
         Binding("ctrl+l", "show_logs", "Show Logs"),
@@ -61,123 +62,66 @@ class TerminalRenderer(App):
         self.store = Container.resolve(Store)
         self.network = Container.resolve(SpotifyNetwork)
         self.local_player = Container.resolve(LocalPlayer)
-        self.command_service = CommandService()
+        self.command_service = Container.resolve(CommandService)
+        self.ui_store = Container.resolve(UIStore)
+        self.playback_store = Container.resolve(PlaybackStore)
+        self.network_store = Container.resolve(NetworkStore)
+        self.device_store = Container.resolve(DeviceStore)
+
         self.leader_mode = False
         self._is_running = True
         self.debug_logger = DebugLogger()
-
         self.leader_timer = None
 
         for theme in THEMES.values():
             self.register_theme(theme)
 
-    def action_show_logs(self) -> None:
-        from src.ui.modals.log_modal import LogModal
-
-        self.push_screen(LogModal())
-
-    def action_play_pause(self) -> None:
-        """Executed via leader key mapping or global Space handler."""
-        self.command_service.execute("play_pause", self)
-
-    def app_log(self, message: str, level: str = "info", source: str = "App") -> None:
-        """Centralized logging method that uses DebugLogger."""
-        log_level = LogLevel(level.lower()) if hasattr(LogLevel, level.upper()) else LogLevel.INFO
-        self.debug_logger.log(log_level, source, message)
-        self.log(message)
-
-    def copy_to_clipboard(self, text: str) -> None:
-        """Copy text to system clipboard."""
-        from src.core.utils import copy_to_clipboard
-
-        if copy_to_clipboard(text):
-            self.notify("Copied to clipboard")
-        else:
-            self.notify("Failed to copy to clipboard", severity="error")
-
-    def notify(
-        self,
-        message: str,
-        *,
-        title: str = "",
-        severity: SeverityLevel = "information",
-        timeout: Optional[float] = 3.0,
-        **kwargs,
-    ) -> None:
-        super().notify(message, title=title, severity=severity, timeout=timeout)
-
-    def apply_theme(self, theme_name: str) -> None:
-        if hasattr(self.user_prefs, "theme_vars") and self.user_prefs.theme_vars:
-            from textual.theme import Theme
-
-            v = self.user_prefs.theme_vars
-            fallback = THEMES.get(theme_name, THEMES["catppuccin"])
-            custom_theme = Theme(
-                name="custom",
-                primary=v.get("primary") or fallback.primary,
-                accent=v.get("accent") or fallback.accent,
-                background=v.get("background") or fallback.background,
-                surface=v.get("surface") or fallback.surface,
-                panel=v.get("panel") or fallback.panel,
-                success=v.get("success") or fallback.success,
-                warning=v.get("warning") or fallback.warning,
-                error=v.get("error") or fallback.error,
-            )
-            self.register_theme(custom_theme)
-            self.theme = "custom"
-        elif theme_name in THEMES:
-            self.theme = theme_name
-
     def on_mount(self) -> None:
         self.title = "Spotify TUI"
         self.apply_theme(self.user_prefs.theme)
 
+        # Sync persistent bindings and Lua config
         self.store.set("nav_bindings", dict(self.user_prefs.nav_bindings))
-        # Initial startup sequence
+        self.store.set("special_playlists", list(self.user_prefs.special_playlists))
+
         self.run_startup_sequence()
-        # Start persistent heartbeat loop
         self.run_heartbeat_loop()
 
     @work(exclusive=True, thread=True)
     def run_startup_sequence(self) -> None:
-        """Coordinated startup to prevent network flood."""
-        # 1. Ensure we have a device
         useEnsureActiveDevice(self, silent=True)
-
-        # 2. First data fetch
         self.refresh_data()
-
-        # 3. Restore tracks from history
         recent = self.store.get("recently_played")
         if recent:
-            self.call_from_thread(self.store.set, "current_tracks", recent)
-
-        # 4. Start player integrations
+            self.call_from_thread(self.ui_store.update, current_tracks=recent)
         useSwitchToLocalPlayer(self)
         self.call_from_thread(self.set_timer, 2.0, lambda: useAutoPlay(self))
         self.call_from_thread(self.update_now_playing)
 
     @work(name="heartbeat", exclusive=True, thread=True)
     def run_heartbeat_loop(self) -> None:
-        """Persistent background worker for adaptive polling."""
-        while True:
+        while self._is_running:
             now = time.time()
             try:
-                # 1. Determine Polling Priority
-                playback = self.store.get("current_playback")
+                # Player Health Check
+                if self.local_player and not self.local_player.is_running():
+                    if self.network and self.network.is_authenticated():
+                        token = self.network.get_access_token()
+                        self.local_player.start(
+                            audio_config=self.user_prefs.audio_config, access_token=token
+                        )
+
+                playback = self.playback_store.get()
                 is_playing = bool(playback and playback.get("is_playing"))
 
-                # Calculate ideal interval
-                if is_playing:
+                if is_playing and playback:
                     progress_ms = playback.get("progress_ms", 0)
                     duration_ms = playback.get("item", {}).get("duration_ms", 0)
                     remaining_ms = duration_ms - progress_ms
-                    # If near end of track (< 10s), poll faster
                     interval = 2.0 if remaining_ms < 10000 else 10.0
                 else:
                     interval = 15.0
 
-                # 2. Execute Polling if interval passed
                 if (
                     not hasattr(self, "_last_playback_poll")
                     or now - self._last_playback_poll >= interval
@@ -185,12 +129,11 @@ class TerminalRenderer(App):
                     useUpdateNowPlaying(self)
                     self._last_playback_poll = now
 
-                # 3. Slower background tasks (chained)
                 if not hasattr(self, "_last_auth_check") or now - self._last_auth_check > 600:
                     self.call_from_thread(self.check_authentication)
                     self._last_auth_check = now
 
-                if not hasattr(self, "_last_device_sync") or now - self._last_device_sync > 120:
+                if not hasattr(self, "_last_device_sync") or now - self._last_device_sync > 60:
                     try:
                         network = Container.resolve(SpotifyNetwork)
                         devices_data = network.get_devices()
@@ -199,7 +142,6 @@ class TerminalRenderer(App):
                     except:
                         pass
 
-                # Sleep a short while before next iteration
                 time.sleep(1.0)
             except Exception:
                 time.sleep(5.0)
@@ -209,34 +151,32 @@ class TerminalRenderer(App):
             self.notify("Authentication expired. Re-authenticating...", severity="warning")
             try:
                 self.network.reauthenticate()
-                self.notify("Re-authentication successful.", severity="information")
                 self.refresh_data()
                 self.update_now_playing()
             except Exception as e:
                 self.notify(f"Re-authentication failed: {e}", severity="error")
 
-    def log_fd_count(self, context: str = "") -> None:
-        try:
-            import psutil, os
-
-            process = psutil.Process(os.getpid())
-            fds = process.num_fds()
-            self.app_log(f"[FD Monitor] {context} - FDs: {fds}")
-        except Exception:
-            pass
-
     def refresh_data(self) -> None:
         useRefreshData(self)
 
     async def action_quit(self) -> None:
-        self.log_fd_count("action_quit")
         self._is_running = False
         if self.local_player:
             try:
                 self.local_player.stop()
-            except Exception:
+            except:
                 pass
         self.exit()
+
+    def is_screen_active(self, screen_name: str) -> bool:
+        return any(type(s).__name__ == screen_name for s in self.screen_stack)
+
+    def safe_push_screen(self, screen, callback=None):
+        """Enforce single-instance of same modal type."""
+        screen_type = type(screen).__name__
+        if self.is_screen_active(screen_type):
+            return None
+        return self.push_screen(screen, callback)
 
     def safe_network_call(self, func, *args, **kwargs) -> Any:
         if not self.network:
@@ -265,18 +205,14 @@ class TerminalRenderer(App):
         self.leader_mode = False
         try:
             mode = "SEARCH" if self.is_screen_active("TelescopePrompt") else "NORMAL"
-            self.query_one(StatusBar).mode = mode
-        except Exception:
+            self.ui_store.update(mode=mode)
+        except:
             pass
         if self.is_screen_active("WhichKeyPopup"):
             self.pop_screen()
 
-    def is_screen_active(self, screen_name: str) -> bool:
-        return any(type(s).__name__ == screen_name for s in self.screen_stack)
-
     def handle_leader_command(self, key_char: str) -> None:
         self.cancel_leader()
-        # Map back special key names
         lookup = "space" if key_char == " " else key_char
         kb = self.user_prefs.keybindings
         if lookup in kb:
@@ -287,16 +223,12 @@ class TerminalRenderer(App):
         leader_key = self.user_prefs.leader
         key = event.key
         char = event.character or ""
-
-        # Identification of Leader Key (Handles 'space' and other keys)
         is_leader = (char == leader_key) or (key == leader_key)
         if leader_key == "space" and key == "space":
             is_leader = True
-
         in_input = self.focused and self.focused.__class__.__name__ == "Input"
         is_modal_active = len(self.screen_stack) > 1
 
-        # 1. Leader Mode Handling
         if self.leader_mode:
             if key == "escape":
                 self.cancel_leader()
@@ -308,24 +240,20 @@ class TerminalRenderer(App):
             event.stop()
             return
 
-        # 2. Enter Leader Mode
         if is_leader and not in_input:
             self.leader_mode = True
             try:
-                self.query_one(StatusBar).mode = "LEADER"
+                self.ui_store.update(mode="LEADER")
             except:
                 pass
             if self.user_prefs.show_which_key:
-                self.push_screen(WhichKeyPopup())
+                self.safe_push_screen(WhichKeyPopup())
             event.prevent_default()
             event.stop()
             return
 
-        # 3. Global Navigation (Respecting Lua config)
         if not in_input and not is_modal_active:
             nav = self.user_prefs.nav_bindings
-
-            # Switch panels (Left/Right)
             if char == nav.get("left"):
                 try:
                     self.query_one("#content-tree").focus()
@@ -340,8 +268,6 @@ class TerminalRenderer(App):
                     pass
                 event.stop()
                 return
-
-            # Component-level navigation (Up/Down/Page)
             f = self.focused
             if f:
                 method_map = {
@@ -356,15 +282,41 @@ class TerminalRenderer(App):
                     event.stop()
                     return
 
-        # 4. Bubble everything else
-        # Enter will bubble to components.
-        # Space (if NOT leader) will bubble and could trigger play_pause if bound.
-        # But we don't bind it in BINDINGS now.
         if key == "space" and not is_leader and not in_input:
-            # Manually trigger play_pause for space if it's the "spatial key"
             self.action_play_pause()
             event.stop()
             return
 
+    def apply_theme(self, theme_name: str) -> None:
+        if hasattr(self.user_prefs, "theme_vars") and self.user_prefs.theme_vars:
+            from textual.theme import Theme
+
+            v = self.user_prefs.theme_vars
+            fb = THEMES.get(theme_name, THEMES["catppuccin"])
+            self.register_theme(
+                Theme(
+                    name="custom",
+                    primary=v.get("primary") or fb.primary,
+                    accent=v.get("accent") or fb.accent,
+                    background=v.get("background") or fb.background,
+                    surface=v.get("surface") or fb.surface,
+                    panel=v.get("panel") or fb.panel,
+                    success=v.get("success") or fb.success,
+                    warning=v.get("warning") or fb.warning,
+                    error=v.get("error") or fb.error,
+                )
+            )
+            self.theme = "custom"
+        elif theme_name in THEMES:
+            self.theme = theme_name
+
     def on_unmount(self) -> None:
         self._is_running = False
+
+    def action_play_pause(self) -> None:
+        self.command_service.execute("play_pause", self)
+
+    def action_show_logs(self) -> None:
+        from src.ui.modals.log_modal import LogModal
+
+        self.safe_push_screen(LogModal())
