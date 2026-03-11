@@ -47,7 +47,5 @@ def useUpdateNowPlaying(app, force=False):
                     device_store.update(preferred_name=active.get("name"))
 
     except Exception:
-        store = Container.resolve(Store)
-        store.set("api_connected", False)
-        Container.resolve(NetworkStore).update(api_connected=False)
+        # We rely on the base service dampening logic for api_connected status.
         pass

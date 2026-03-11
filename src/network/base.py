@@ -23,10 +23,45 @@ class SpotifyServiceBase:
     _last_call_times: dict[str, float] = {}
     _call_lock = threading.Lock()
 
+    # Dampening logic for connection status
+    _consecutive_failures = 0
+    _failure_threshold = 3  # Fail 3 times before marking as disconnected
+    _health_lock = threading.Lock()
+
     def __init__(self, sp: Optional[spotipy.Spotify] = None):
         self.sp = sp
         self._debug = DebugLogger()
         self._cache = CacheStore()
+
+    @classmethod
+    def _update_connectivity(cls, success: bool):
+        """Update global connectivity state with dampening."""
+        try:
+            from src.state.store import Store
+            from src.state.feature_stores import NetworkStore
+            from src.core.di import Container as DIContainer
+
+            with cls._health_lock:
+                if success:
+                    cls._consecutive_failures = 0
+                    should_mark_online = True
+                    should_mark_offline = False
+                else:
+                    cls._consecutive_failures += 1
+                    should_mark_online = False
+                    should_mark_offline = cls._consecutive_failures >= cls._failure_threshold
+
+            store = DIContainer.resolve(Store)
+            net_store = DIContainer.resolve(NetworkStore)
+
+            if success:
+                store.set("api_connected", True)
+                net_store.update(api_connected=True, is_authenticated=True)
+            elif should_mark_offline:
+                store.set("api_connected", False)
+                net_store.update(api_connected=False)
+        except:
+            pass
 
     def set_spotify_client(self, sp: spotipy.Spotify) -> None:
         """Update the Spotify client instance."""
@@ -96,15 +131,7 @@ class SpotifyServiceBase:
             duration_ms = (time.time() - start_time) * 1000
 
             # 3. Track success
-            try:
-                from src.state.store import Store
-                from src.state.feature_stores import NetworkStore
-                from src.core.di import Container as DIContainer
-
-                DIContainer.resolve(Store).set("api_connected", True)
-                DIContainer.resolve(NetworkStore).update(api_connected=True, is_authenticated=True)
-            except:
-                pass
+            self._update_connectivity(True)
 
             # Capture full response snippet for debugging
             try:
@@ -138,15 +165,8 @@ class SpotifyServiceBase:
             duration_ms = (time.time() - start_time) * 1000
             status_code = getattr(e, "http_status", None)
 
-            try:
-                from src.state.store import Store
-                from src.state.feature_stores import NetworkStore
-                from src.core.di import Container as DIContainer
-
-                DIContainer.resolve(Store).set("api_connected", False)
-                DIContainer.resolve(NetworkStore).update(api_connected=False)
-            except:
-                pass
+            # Dampened offline marking
+            self._update_connectivity(False)
 
             # Check if we should suppress the error log
             should_suppress = suppress_status_codes and status_code in suppress_status_codes
@@ -163,15 +183,8 @@ class SpotifyServiceBase:
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
 
-            try:
-                from src.state.store import Store
-                from src.state.feature_stores import NetworkStore
-                from src.core.di import Container as DIContainer
-
-                DIContainer.resolve(Store).set("api_connected", False)
-                DIContainer.resolve(NetworkStore).update(api_connected=False)
-            except:
-                pass
+            # Dampened offline marking
+            self._update_connectivity(False)
 
             error_msg = f"Unexpected error in API call ({endpoint}): {e}"
             logger.error(error_msg)
