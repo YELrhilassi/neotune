@@ -68,9 +68,9 @@ class PlaybackService(SpotifyServiceBase):
         if not state or not state.get("is_playing"):
             return
 
-        # Record if this device is active (regardless of name) OR if it's our specific player
+        # ONLY record if our TUI player is the output device (user request)
         device = state.get("device", {})
-        if not device.get("is_active") and device.get("name") != PlayerSettings.DEVICE_NAME:
+        if device.get("name") != PlayerSettings.DEVICE_NAME:
             return
 
         context = state.get("context")
@@ -97,32 +97,49 @@ class PlaybackService(SpotifyServiceBase):
             def _fetch_meta_and_record():
                 try:
                     from src.network.library_service import LibraryService
+                    from src.core.di import Container as DIContainer
 
                     library = DIContainer.resolve(LibraryService)
 
-                    name = f"{ctype.capitalize()}: {uri.split(':')[-1]}"
+                    # Start with a placeholder based on URI
+                    context_id = uri.split(":")[-1]
+                    name = f"{ctype.capitalize()}: {context_id}"
                     metadata = {}
 
-                    if ctype == "playlist":
-                        # Fetch full playlist object for name and owner
-                        playlist_id = uri.split(":")[-1]
-                        meta = library.get_playlist_metadata(playlist_id)
-                        if meta:
-                            name = meta.get("name", name)
-                            owner = meta.get("owner", {}).get("display_name", "")
-                            if owner:
-                                metadata["artists"] = f"by {owner}"
-                    elif ctype == "album":
-                        # Fetch full album object for name and artists
-                        album_id = uri.split(":")[-1]
-                        meta = library.get_album_metadata(album_id)
-                        if meta:
-                            name = meta.get("name", name)
-                            artists = meta.get("artists", [])
-                            if artists:
-                                metadata["artists"] = ", ".join(
-                                    [a.get("name", "") for a in artists]
-                                )
+                    # 1. Try to get info from current item first (most efficient)
+                    item = state.get("item")
+                    if item:
+                        if (
+                            ctype == "album"
+                            and item.get("album")
+                            and item["album"].get("uri") == uri
+                        ):
+                            name = item["album"].get("name", name)
+                            metadata["artists"] = ", ".join(
+                                [a.get("name", "") for a in item["album"].get("artists", [])]
+                            )
+
+                    # 2. Fetch full metadata if name is still a placeholder
+                    if ":" in name or name.lower() in ["album", "playlist"]:
+                        try:
+                            if ctype == "playlist":
+                                meta = library.get_playlist_metadata(context_id)
+                                if meta:
+                                    name = meta.get("name", name)
+                                    owner = meta.get("owner", {}).get("display_name", "")
+                                    if owner:
+                                        metadata["artists"] = f"by {owner}"
+                            elif ctype == "album" and not metadata:
+                                meta = library.get_album_metadata(context_id)
+                                if meta:
+                                    name = meta.get("name", name)
+                                    artists = meta.get("artists", [])
+                                    if artists:
+                                        metadata["artists"] = ", ".join(
+                                            [a.get("name", "") for a in artists]
+                                        )
+                        except:
+                            pass
 
                     activity.record_context_play(uri, name, ctype, metadata)
                 except Exception as e:
@@ -189,21 +206,48 @@ class PlaybackService(SpotifyServiceBase):
         context_uri: Optional[str] = None,
         offset_position: Optional[int] = None,
     ):
-        """Start playback with consistent parameter naming."""
+        """Start playback with consistent parameter naming and special context resolution."""
         params = {}
         if device_id:
             params["device_id"] = device_id
+
+        # Normalize context_uri: if track_uri is a context, move it to context_uri
+        if isinstance(track_uri, str) and (
+            ":playlist:" in track_uri or ":album:" in track_uri or ":station:" in track_uri
+        ):
+            if not context_uri:
+                context_uri = track_uri
+                track_uri = None
+
         if context_uri:
             params["context_uri"] = context_uri
 
         if offset_position is not None:
             params["offset"] = {"position": int(offset_position)}
 
-        if isinstance(track_uri, str) and ":track:" in track_uri:
-            params["uris"] = [track_uri]
-            # If playing a single track, offset to it
-            if "offset" not in params:
-                params["offset"] = {"uri": track_uri}
+        # 1. Resolve Special Contexts (Radio, Ghost Playlists)
+        if context_uri:
+            from src.network.discovery_service import DiscoveryService
+            from src.core.di import Container as DIContainer
+
+            try:
+                disc = DIContainer.resolve(DiscoveryService)
+                resolved_uris = disc.resolve_special_context(context_uri)
+                if resolved_uris:
+                    # Switch from context_uri to a list of uris (reconstructed locally)
+                    track_uri = resolved_uris
+                    if "context_uri" in params:
+                        del params["context_uri"]
+            except:
+                pass
+
+        if isinstance(track_uri, str):
+            if ":track:" in track_uri:
+                params["uris"] = [track_uri]
+                if "offset" not in params:
+                    params["offset"] = {"uri": track_uri}
+            elif ":playlist:" in track_uri or ":album:" in track_uri:
+                params["context_uri"] = track_uri
         elif isinstance(track_uri, list):
             params["uris"] = track_uri
 

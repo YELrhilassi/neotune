@@ -73,9 +73,13 @@ class TrackList(DataTable):
 
                 icon = Icons.PLAYLIST if ctype == "playlist" else Icons.ALBUM
 
+                artist_display = metadata.get("artists")
+                if not artist_display:
+                    artist_display = f"[{ctype.capitalize()}]"
+
                 self.add_row(
                     f"{icon} {strip_icons(name)}",
-                    metadata.get("artists", f"[{ctype.capitalize()}]"),
+                    artist_display,
                     "Playlist" if ctype == "playlist" else strip_icons(name),
                     "-",
                     key=unique_key,
@@ -130,8 +134,21 @@ class TrackList(DataTable):
             app = cast(TerminalRenderer, self.app)
 
             def _play_context():
+                from src.hooks.track_actions import play_track
+
+                # Check if it looks like a valid playable context
+                if not uri or ":" not in uri:
+                    app.notify("Invalid playlist/album URI", severity="error")
+                    return
+
                 if play_track(uri, app):
                     app.call_from_thread(cast(Any, app).update_now_playing)
+                else:
+                    # If playback failed, maybe it's an unresponsive "ghost"
+                    # We'll notify the user and suggest refreshing
+                    app.notify(
+                        "Could not play this item. It might be unavailable.", severity="warning"
+                    )
 
             import threading
 

@@ -95,15 +95,24 @@ class SpotifyServiceBase:
             duration_ms = (time.time() - start_time) * 1000
 
             # 3. Track success
-            # Estimate size
+            # Capture full response snippet for debugging
             try:
-                res_str = json.dumps(result, default=str)
+                # Use a custom serializer for complex objects if needed
+                res_str = json.dumps(result, indent=2, default=str)
                 size = len(res_str)
-                # Cap body in debug for performance
-                body_snippet = result if size < 2000 else {"info": "Body too large", "size": size}
+                # Keep a reasonably large snippet for 'Details'
+                body_snippet = (
+                    result
+                    if size < 5000
+                    else {
+                        "info": "Response too large for snippet",
+                        "size": size,
+                        "preview": str(result)[:500],
+                    }
+                )
             except:
                 size = 0
-                body_snippet = None
+                body_snippet = str(result)[:1000]
 
             self._debug.network_end(request_id, status_code=200, size=size, body=body_snippet)
             self._debug.track_performance(endpoint, duration_ms)

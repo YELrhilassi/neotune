@@ -53,15 +53,24 @@ class LibraryService(SpotifyServiceBase):
         return result.get("items", []) if result else []
 
     def get_playlist_metadata(self, playlist_id: str) -> Optional[dict[str, Any]]:
-        """Fetch metadata for a single playlist."""
+        """Fetch metadata for a single playlist with robustness."""
         return self._safe_api_call(
-            self.sp.playlist, playlist_id, track_name="playlist_metadata", cache_ttl=3600
+            self.sp.playlist,
+            playlist_id,
+            fields="name,owner.display_name,uri,id",
+            track_name="playlist_metadata",
+            cache_ttl=3600,
+            suppress_status_codes=[404],
         )
 
     def get_album_metadata(self, album_id: str) -> Optional[dict[str, Any]]:
-        """Fetch metadata for a single album."""
+        """Fetch metadata for a single album with robustness."""
         return self._safe_api_call(
-            self.sp.album, album_id, track_name="album_metadata", cache_ttl=3600
+            self.sp.album,
+            album_id,
+            track_name="album_metadata",
+            cache_ttl=3600,
+            suppress_status_codes=[404],
         )
 
     def get_track_metadata(self, track_id: str) -> Optional[dict[str, Any]]:

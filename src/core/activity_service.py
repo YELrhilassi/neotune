@@ -41,8 +41,19 @@ class ActivityService:
         existing = next((item for item in history if item["uri"] == context_uri), None)
 
         if existing:
-            # If the new name is just a placeholder and we have a real name, keep the real one
-            if ":" in name and ":" not in existing["name"]:
+            # PROTECTION: If the new name is just a placeholder and we have a real name, keep the real one
+            is_new_name_placeholder = ":" in name or name.lower() in [
+                "album",
+                "playlist",
+                "unknown context",
+            ]
+            is_old_name_better = ":" not in existing["name"] and existing["name"].lower() not in [
+                "album",
+                "playlist",
+                "unknown context",
+            ]
+
+            if is_new_name_placeholder and is_old_name_better:
                 name = existing["name"]
 
             # If we don't have metadata yet but we just got some, update it
