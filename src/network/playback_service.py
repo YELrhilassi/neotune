@@ -2,7 +2,7 @@
 
 import time
 import threading
-from typing import Optional, Any
+from typing import Optional, Any, Dict, List, Callable
 from src.core.constants import PlayerSettings
 from src.network.base import SpotifyServiceBase
 from src.core.di import Container
@@ -25,6 +25,9 @@ class PlaybackService(SpotifyServiceBase):
 
     def get_current_playback(self, force: bool = False) -> Optional[dict[str, Any]]:
         """Fetch current playback state with predictive local sync."""
+        if not self.sp:
+            return self._last_playback_state
+
         with self._lock:
             now = time.time()
 
@@ -35,23 +38,31 @@ class PlaybackService(SpotifyServiceBase):
                 and (now - self._last_state_time < self._state_cache_ttl)
             ):
                 if self._last_playback_state.get("is_playing"):
+                    # Calculate local progress prediction
                     elapsed_ms = int((now - self._last_state_time) * 1000)
                     predicted = self._last_playback_state.copy()
+
+                    # Ensure we don't predict past the track duration
                     duration = predicted.get("item", {}).get("duration_ms", 0)
                     new_progress = predicted.get("progress_ms", 0) + elapsed_ms
+
                     if duration > 0 and new_progress >= duration:
+                        # Near end: fall through to actual API call
                         pass
                     else:
                         predicted["progress_ms"] = new_progress
                         return predicted
                 else:
+                    # If paused, cache is 100% accurate
                     return self._last_playback_state
 
-            # 2. Actual API Call
+            # 2. Actual API Call (Throttled by Base Service min_interval)
+            # Use a slightly longer interval here to strictly control traffic
             state = self._safe_api_call(
                 self.sp.current_playback, track_name="current_playback", min_interval=5.0
             )
 
+            # If API returns None (due to throttling or error), use last known
             if state is None:
                 return self._last_playback_state
 
@@ -68,7 +79,7 @@ class PlaybackService(SpotifyServiceBase):
         if not state or not state.get("is_playing"):
             return
 
-        # Record if this is happening on our preferred device
+        # Record if this device is active (regardless of name) OR if it's our specific player
         device = state.get("device", {})
         is_tui_player = device.get("name") == PlayerSettings.DEVICE_NAME
 
@@ -107,7 +118,7 @@ class PlaybackService(SpotifyServiceBase):
                 try:
                     from src.network.library_service import LibraryService
 
-                    library = Container.resolve(LibraryService)
+                    library = DIContainer.resolve(LibraryService)
 
                     # Start with a placeholder based on URI
                     context_id = uri.split(":")[-1]
@@ -161,6 +172,9 @@ class PlaybackService(SpotifyServiceBase):
 
     def get_devices(self, force: bool = True) -> list[dict[str, Any]]:
         """Fetch available devices. Defaults to forcing a fresh fetch for accuracy."""
+        if not self.sp:
+            return self._last_devices
+
         with self._lock:
             now = time.time()
             if not force and (now - self._last_devices_time < self._devices_cache_ttl):
@@ -193,7 +207,7 @@ class PlaybackService(SpotifyServiceBase):
         # 3. First available
         return devices[0].get("id")
 
-    def _execute_with_fallback(self, operation: callable, *args, **kwargs) -> Any:
+    def _execute_with_fallback(self, operation: Callable, *args, **kwargs) -> Any:
         try:
             return operation(*args, **kwargs)
         except Exception as e:
@@ -217,6 +231,9 @@ class PlaybackService(SpotifyServiceBase):
         offset_position: Optional[int] = None,
     ):
         """Start playback with consistent parameter naming and special context resolution."""
+        if not self.sp:
+            return
+
         params = {}
         if device_id:
             params["device_id"] = device_id
@@ -264,10 +281,15 @@ class PlaybackService(SpotifyServiceBase):
         self._safe_api_call(self.sp.start_playback, track_name="play_track", **params)
 
     def pause(self):
+        if not self.sp:
+            return
         self._safe_api_call(self.sp.pause_playback, track_name="pause_playback")
 
     def resume(self):
         """Resume playback with proactive device check to avoid 404s."""
+        if not self.sp:
+            return
+
         # 1. Proactive check with FRESH device list
         state = self.get_current_playback()
         if not state or not state.get("device", {}).get("is_active"):
@@ -288,26 +310,36 @@ class PlaybackService(SpotifyServiceBase):
         )
 
     def next(self):
+        if not self.sp:
+            return
         self._safe_api_call(
             self._execute_with_fallback, self.sp.next_track, track_name="next_track"
         )
 
     def previous(self):
+        if not self.sp:
+            return
         self._safe_api_call(
             self._execute_with_fallback, self.sp.previous_track, track_name="prev_track"
         )
 
     def toggle_shuffle(self, state: bool):
+        if not self.sp:
+            return
         self._safe_api_call(
             self._execute_with_fallback, self.sp.shuffle, state=state, track_name="toggle_shuffle"
         )
 
     def set_repeat(self, state: str):
+        if not self.sp:
+            return
         self._safe_api_call(
             self._execute_with_fallback, self.sp.repeat, state=state, track_name="set_repeat"
         )
 
     def transfer(self, device_id: str, force_play: bool = True):
+        if not self.sp:
+            return
         self._safe_api_call(
             self.sp.transfer_playback,
             device_id=device_id,

@@ -12,7 +12,6 @@ from src.ui.components.content_tree.tree_nodes import (
     DiscoveryBranch,
 )
 
-
 if TYPE_CHECKING:
     from src.ui.terminal_renderer import TerminalRenderer
 
@@ -22,9 +21,6 @@ class ContentTree(Tree):
     The primary navigation component, organized into isolated functional branches.
     Uses centralized state management to reactively update its structure.
     """
-
-    # We do NOT override BINDINGS with an empty list.
-    # This allows default Enter/Space/Arrows to work.
 
     def __init__(self, **kwargs):
         super().__init__("Root", **kwargs)
@@ -137,16 +133,20 @@ class ContentTree(Tree):
             return
 
         node_type = data.get("type")
+        from src.core.debug_logger import DebugLogger
 
-        # 1. Groups & Categories: Handle Expansion
+        DebugLogger().debug("Sidebar", f"Selected node: {node_type} ({data.get('id')})")
+
+        # 1. Groups & Categories: Toggle expansion
         if node_type in ["group", "category_root"]:
             if node_type == "category_root" and not node.children:
                 # Lazy load category playlists
                 self.load_category_playlists(node, data.get("id"), str(node.label))
 
-            # Use toggle and ensure UI update
-            node.toggle()
-            # If it's a group, we don't want to load anything into the track list
+            if node.is_expanded:
+                node.collapse()
+            else:
+                node.expand()
             return
 
         # 2. Content: Load tracks/views
@@ -191,11 +191,8 @@ class ContentTree(Tree):
             def _update_ui():
                 if not playlists:
                     # Filter unresponsive: remove node if it fails to load content
-                    # This keeps the sidebar clean of "broken" categories
                     try:
                         node.remove()
-                        # Only notify if it was a user click, not background refresh
-                        # (Checking focus is a decent proxy for user intent here)
                         if self.has_focus:
                             self.app.notify(
                                 f"Filtered unresponsive category: {category_name}",
@@ -223,39 +220,6 @@ class ContentTree(Tree):
             self.app.call_from_thread(node.remove_children)
 
     @work(exclusive=True, thread=True)
-    def load_playlist_tracks(self, playlist_id: str):
-        """Background worker for tracks."""
-        try:
-            current_l = self.store.get("loading_states") or {}
-            self.app.call_from_thread(
-                self.store.set, "loading_states", {**current_l, "track_list": True}
-            )
-            tracks = self.network.get_playlist_tracks(playlist_id)
-            self.app.call_from_thread(self.store.set, "current_tracks", tracks)
-            self.app.call_from_thread(
-                self.store.set,
-                "last_active_context",
-                f"spotify:playlist:{playlist_id}",
-                persist=True,
-            )
-
-            def _focus():
-                try:
-                    self.app.query_one("TrackList").focus()
-                except:
-                    pass
-
-            self.app.call_from_thread(_focus)
-        except Exception as e:
-            if self.app:
-                self.app.call_from_thread(self.app.notify, f"Error: {e}", severity="error")
-        finally:
-            current_l = self.store.get("loading_states") or {}
-            self.app.call_from_thread(
-                self.store.set, "loading_states", {**current_l, "track_list": False}
-            )
-
-    @work(exclusive=True, thread=True)
     def load_made_for_you(self):
         """Background worker for 'Made For You' content."""
         try:
@@ -265,57 +229,83 @@ class ContentTree(Tree):
             )
 
             combined = []
+            seen_uris = set()
 
             # 1. Add Special Playlists from Lua Config
             from src.config.user_prefs import UserPreferences
 
             try:
                 prefs = Container.resolve(UserPreferences)
-                for pl in prefs.special_playlists:
+                if prefs and prefs.special_playlists:
+                    for pl in prefs.special_playlists:
+                        if not pl or not isinstance(pl, dict):
+                            continue
+                        uri = pl.get("uri")
+                        if uri and uri not in seen_uris:
+                            combined.append(
+                                {
+                                    "type": "context",
+                                    "context_type": "playlist",
+                                    "uri": uri,
+                                    "name": pl.get("name", "Special Playlist"),
+                                    "metadata": {
+                                        "artists": pl.get("description", "User Configured Mix")
+                                    },
+                                }
+                            )
+                            seen_uris.add(uri)
+            except:
+                pass
+
+            # 2. Search for standard 'Made For You' playlists
+            mfy_playlists = self.network.discovery.get_made_for_you_playlists()
+            for pl in mfy_playlists:
+                uri = pl.get("uri")
+                if uri and uri not in seen_uris:
                     combined.append(
                         {
                             "type": "context",
                             "context_type": "playlist",
-                            "uri": pl.get("uri"),
+                            "uri": uri,
                             "name": pl.get("name"),
-                            "metadata": {"artists": pl.get("description", "Personalized Mix")},
+                            "metadata": {
+                                "artists": f"by {pl.get('owner', {}).get('display_name', 'Spotify')}"
+                            },
                         }
                     )
-            except:
-                pass
+                    seen_uris.add(uri)
 
-            # 2. Add Algorithmic Categories from Spotify
+            # 3. Add Algorithmic Categories from Spotify Browse
             metadata = self.store.get("browse_metadata") or {}
             categories = metadata.get("categories", [])
-
             for cat in categories:
                 name_lower = cat.get("name", "").lower()
                 cat_id = cat.get("id")
-                # Algorithmic check
-                if (
-                    any(
-                        term in name_lower
-                        for term in [
-                            "made for you",
-                            "daily mix",
-                            "discover weekly",
-                            "release radar",
-                            "mix",
-                            "dj",
-                        ]
-                    )
-                    or cat_id == "made-for-you"
-                ):
-                    combined.append(
-                        {
-                            "type": "context",
-                            "context_type": "category",
-                            "uri": f"spotify:category:{cat_id}",
-                            "id": cat_id,
-                            "name": cat.get("name"),
-                            "metadata": {"artists": "Spotify Algorithmic Content"},
-                        }
-                    )
+                is_algorithmic = any(
+                    term in name_lower
+                    for term in [
+                        "made for you",
+                        "daily mix",
+                        "discover weekly",
+                        "release radar",
+                        "mix",
+                        "dj",
+                    ]
+                )
+                if is_algorithmic or cat_id == "made-for-you" or str(cat_id).startswith("0JQ5D"):
+                    uri = f"spotify:category:{cat_id}"
+                    if uri not in seen_uris:
+                        combined.append(
+                            {
+                                "type": "context",
+                                "context_type": "category",
+                                "uri": uri,
+                                "id": cat_id,
+                                "name": cat.get("name"),
+                                "metadata": {"artists": "Spotify Algorithmic Content"},
+                            }
+                        )
+                        seen_uris.add(uri)
 
             self.app.call_from_thread(self.store.set, "current_tracks", combined)
             self.app.call_from_thread(
@@ -392,6 +382,39 @@ class ContentTree(Tree):
             self.app.call_from_thread(self.store.set, "current_tracks", tracks)
             self.app.call_from_thread(
                 self.store.set, "last_active_context", "liked_songs", persist=True
+            )
+
+            def _focus():
+                try:
+                    self.app.query_one("TrackList").focus()
+                except:
+                    pass
+
+            self.app.call_from_thread(_focus)
+        except Exception as e:
+            if self.app:
+                self.app.call_from_thread(self.app.notify, f"Error: {e}", severity="error")
+        finally:
+            current_l = self.store.get("loading_states") or {}
+            self.app.call_from_thread(
+                self.store.set, "loading_states", {**current_l, "track_list": False}
+            )
+
+    @work(exclusive=True, thread=True)
+    def load_playlist_tracks(self, playlist_id: str):
+        """Background worker for tracks."""
+        try:
+            current_l = self.store.get("loading_states") or {}
+            self.app.call_from_thread(
+                self.store.set, "loading_states", {**current_l, "track_list": True}
+            )
+            tracks = self.network.get_playlist_tracks(playlist_id)
+            self.app.call_from_thread(self.store.set, "current_tracks", tracks)
+            self.app.call_from_thread(
+                self.store.set,
+                "last_active_context",
+                f"spotify:playlist:{playlist_id}",
+                persist=True,
             )
 
             def _focus():

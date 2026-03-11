@@ -328,6 +328,64 @@ class RestartDaemonCommand(Command):
             logger.error(f"Restart daemon failed: {e}")
 
 
+class RecommendationsCommand(Command):
+    """Trigger recommendations (Radio) for current track or selected track."""
+
+    def execute(self, app_instance: Any, *args: Any, **kwargs: Any) -> None:
+        from src.ui.components.track_table import TrackList
+
+        try:
+            track_list = app_instance.query_one(TrackList)
+            # 1. Try to get currently highlighted track in table
+            track_data = track_list.get_highlighted_track_data()
+
+            # 2. Fallback to current playback
+            if not track_data:
+                playback = app_instance.store.get("current_playback")
+                if playback and playback.get("item"):
+                    track_data = playback["item"]
+
+            if not track_data:
+                app_instance.notify("No track selected for Radio", severity="warning")
+                return
+
+            track_id = track_data.get("id")
+            track_name = track_data.get("name", "Unknown Track")
+
+            if not track_id:
+                app_instance.notify("Invalid track ID for Radio", severity="error")
+                return
+
+            app_instance.notify(f"Starting Radio for: {track_name}")
+
+            def _fetch_recommendations():
+                network = Container.resolve(SpotifyNetwork)
+                tracks = network.discovery.get_recommendations(seed_tracks=[track_id])
+
+                if tracks:
+                    app_instance.call_from_thread(app_instance.store.set, "current_tracks", tracks)
+                    app_instance.call_from_thread(
+                        app_instance.store.set,
+                        "last_active_context",
+                        f"radio:{track_id}",
+                        persist=True,
+                    )
+                    # Automatically play first track
+                    from src.hooks.track_actions import play_track
+
+                    if play_track(tracks[0]["uri"], app_instance):
+                        app_instance.call_from_thread(app_instance.update_now_playing)
+                else:
+                    app_instance.call_from_thread(
+                        app_instance.notify, "No recommendations found", severity="warning"
+                    )
+
+            threading.Thread(target=_fetch_recommendations, daemon=True).start()
+
+        except Exception as e:
+            logger.error(f"Recommendations command failed: {e}")
+
+
 class LogoutCommand(Command):
     """Logout and clear sessions."""
 
@@ -381,6 +439,7 @@ class CommandService:
             ("toggle_sidebar", ToggleSidebarCommand()),
             ("refresh", RefreshCommand()),
             ("restart_daemon", RestartDaemonCommand()),
+            ("recommendations", RecommendationsCommand()),
             ("logout", LogoutCommand()),
             ("health", HealthCheckCommand()),
             ("theme_selector", ThemeSelectorCommand()),

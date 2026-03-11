@@ -50,6 +50,16 @@ class TrackList(DataTable):
         if states:
             self.loading = states.get("track_list", False)
 
+    def get_highlighted_track_data(self) -> Optional[dict]:
+        """Return the data for the currently highlighted row."""
+        if self.cursor_row is not None:
+            # DataTable doesn't give us the row key directly from index easily in all versions
+            # We'll use our internal mapping
+            keys = list(self.track_data_map.keys())
+            if 0 <= self.cursor_row < len(keys):
+                return self.track_data_map[keys[self.cursor_row]]
+        return None
+
     def load_tracks(self, tracks: list):
         self.clear()
         if not tracks:

@@ -108,7 +108,8 @@ class DiscoveryBranch(BaseBranch):
                 continue
 
             name_lower = cat_name.lower()
-            # Skip algorithmic categories in sidebar as they are now under 'Made For You' leaf
+            # 1. Skip categories that are clearly personalized/algorithmic
+            # These include common personalized IDs and names
             is_algorithmic = any(
                 term in name_lower
                 for term in [
@@ -118,8 +119,21 @@ class DiscoveryBranch(BaseBranch):
                     "release radar",
                     "mix",
                     "dj",
+                    "your top",
+                    "wrapped",
                 ]
             )
+
+            # Regional personalized IDs often start with 0JQ5D
+            if is_algorithmic or cat_id == "made-for-you" or cat_id.startswith("0JQ5D"):
+                continue
+
+            # 2. Add regular category to Browse All
+            br_root.add(
+                strip_icons(cat_name),
+                data={"type": "category_root", "id": cat_id},
+            )
+
             if is_algorithmic or cat_id == "made-for-you":
                 continue
 

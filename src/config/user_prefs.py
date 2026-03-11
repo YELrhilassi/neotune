@@ -198,11 +198,31 @@ class UserPreferences:
                     self.special_playlists = []
 
                     def _parse_item(p):
+                        if not p:
+                            return
                         try:
-                            # Try attribute access (for Lua objects) then dict access
-                            name = getattr(p, "name", None) or p.get("name")
-                            uri = getattr(p, "uri", None) or p.get("uri")
-                            desc = getattr(p, "description", None) or p.get("description", "")
+                            # Try attribute access then dict access
+                            name = getattr(p, "name", None)
+                            if name is None:
+                                try:
+                                    name = p["name"]
+                                except:
+                                    pass
+
+                            uri = getattr(p, "uri", None)
+                            if uri is None:
+                                try:
+                                    uri = p["uri"]
+                                except:
+                                    pass
+
+                            desc = getattr(p, "description", None)
+                            if desc is None:
+                                try:
+                                    desc = p["description"]
+                                except:
+                                    desc = ""
+
                             if name and uri:
                                 self.special_playlists.append(
                                     {"name": str(name), "uri": str(uri), "description": str(desc)}
@@ -212,20 +232,32 @@ class UserPreferences:
 
                     # Try multiple iteration strategies for lupa
                     try:
-                        # Case: Array-like table (1, 2, 3...)
-                        for i in range(1, len(lua_sp) + 1):
-                            _parse_item(lua_sp[i])
+                        # Case: Array-like table (1-indexed)
+                        for i in range(1, 100):
+                            item = lua_sp[i]
+                            if item:
+                                _parse_item(item)
+                            else:
+                                break
                     except:
                         try:
-                            # Case: Map-like or generic iteration
                             for p in lua_sp.values():
-                                _parse_item(p)
+                                if p:
+                                    _parse_item(p)
                         except:
                             try:
                                 for p in lua_sp:
-                                    _parse_item(p)
+                                    if p:
+                                        _parse_item(p)
                             except:
                                 pass
+
+                    from src.core.debug_logger import DebugLogger
+
+                    DebugLogger().info(
+                        "UserPrefs",
+                        f"Loaded {len(self.special_playlists)} special playlists from Lua",
+                    )
 
                 # Extract debug config
                 lua_debug = getattr(tui_api, "debug", None)

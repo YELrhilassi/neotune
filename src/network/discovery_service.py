@@ -11,6 +11,9 @@ class DiscoveryService(SpotifyServiceBase):
 
     def get_categories(self, country: Optional[str] = None) -> list[dict[str, Any]]:
         """Fetch available browse categories with validation and 404 suppression."""
+        if not self.sp:
+            return []
+
         result = self._safe_api_call(
             self.sp.categories,
             country=country,
@@ -28,6 +31,9 @@ class DiscoveryService(SpotifyServiceBase):
 
     def get_featured_playlists(self, country: Optional[str] = None) -> dict[str, Any]:
         """Fetch featured playlists with 404 suppression and search fallback."""
+        if not self.sp:
+            return {"message": "Featured", "items": []}
+
         result = self._safe_api_call(
             self.sp.featured_playlists,
             country=country,
@@ -54,6 +60,9 @@ class DiscoveryService(SpotifyServiceBase):
     def search(
         self, query: str, types: str = "track,playlist,album", limit: int = 50
     ) -> list[dict[str, Any]]:
+        if not self.sp:
+            return []
+
         result = self._safe_api_call(
             self.sp.search, q=query, type=types, limit=limit, track_name="search", cache_ttl=60
         )
@@ -79,6 +88,9 @@ class DiscoveryService(SpotifyServiceBase):
         self, category_id: str, country: Optional[str] = None
     ) -> list[dict[str, Any]]:
         """Fetch playlists for a category with robust fallbacks and 404 handling."""
+        if not self.sp:
+            return []
+
         # 1. Try official category_playlists endpoint
         for name, params in [
             ("cat_playlists", {"category_id": category_id, "country": country}),
@@ -111,12 +123,60 @@ class DiscoveryService(SpotifyServiceBase):
 
         return []
 
+    def get_made_for_you_playlists(self, country: Optional[str] = None) -> list[dict[str, Any]]:
+        """
+        Discover 'Made For You' playlists by searching for standard names.
+        Filters results to ensure they are owned by Spotify.
+        """
+        if not self.sp:
+            return []
+
+        search_terms = [
+            "Discover Weekly",
+            "Release Radar",
+            "On Repeat",
+            "Repeat Rewind",
+            "Daily Drive",
+            "Daily Mix 1",
+            "Daily Mix 2",
+            "Daily Mix 3",
+            "Daily Mix 4",
+            "Daily Mix 5",
+            "Daily Mix 6",
+        ]
+
+        found_playlists = []
+        for term in search_terms:
+            result = self._safe_api_call(
+                self.sp.search,
+                q=term,
+                type="playlist",
+                limit=1,
+                track_name=f"search_mfy_{term.lower().replace(' ', '_')}",
+                cache_ttl=3600,
+            )
+
+            if result and result.get("playlists"):
+                items = result["playlists"].get("items", [])
+                for pl in items:
+                    if not pl:
+                        continue
+                    owner_id = pl.get("owner", {}).get("id")
+                    if owner_id == "spotify":
+                        found_playlists.append(pl)
+                        break
+
+        return found_playlists
+
     def get_recommendations(
-        self, seed_tracks: list[str] = None, seed_artists: list[str] = None, limit: int = 50
+        self,
+        seed_tracks: Optional[list[str]] = None,
+        seed_artists: Optional[list[str]] = None,
+        limit: int = 50,
     ) -> list[dict[str, Any]]:
         """Fetch recommendations based on seeds (reconstructs 'Radio')."""
         # Ensure we have at least one seed
-        if not seed_tracks and not seed_artists:
+        if not self.sp or (not seed_tracks and not seed_artists):
             return []
 
         result = self._safe_api_call(
@@ -137,7 +197,6 @@ class DiscoveryService(SpotifyServiceBase):
         # 1. Handle Stations (Radio)
         if ":station:" in uri:
             parts = uri.split(":")
-            # Logic: station:track:ID or station:artist:ID
             seed_id = parts[-1]
             if "track" in parts:
                 tracks = self.get_recommendations(seed_tracks=[seed_id])
@@ -150,7 +209,6 @@ class DiscoveryService(SpotifyServiceBase):
         # 2. Handle "Ghost" Playlists (Daily Mixes, Discover Weekly)
         if ":playlist:" in uri:
             playlist_id = uri.split(":")[-1]
-            # Attempt A: Fetch items directly (sometimes metadata 404s but items work)
             try:
                 res = self._safe_api_call(
                     self.sp.playlist_items,
@@ -165,33 +223,6 @@ class DiscoveryService(SpotifyServiceBase):
                         for i in res["items"]
                         if i.get("track") and i["track"].get("uri")
                     ]
-            except:
-                pass
-
-            # Attempt B: Contextual Search Fallback (using Activity History)
-            from src.core.activity_service import ActivityService
-            from src.core.di import Container as DIContainer
-
-            try:
-                activity = DIContainer.resolve(ActivityService)
-                history = activity.get_recent_contexts()
-                match = next((item for item in history if item["uri"] == uri), None)
-                if match and match.get("name") and ":" not in match["name"]:
-                    # We have a real name from a previous successful session!
-                    search_res = self.search(
-                        f"{match['name']} owner:spotify", types="playlist", limit=1
-                    )
-                    if search_res and search_res[0].get("_qtype") == "playlist":
-                        new_id = search_res[0]["data"].get("id")
-                        res = self._safe_api_call(
-                            self.sp.playlist_items, new_id, limit=50, suppress_status_codes=[404]
-                        )
-                        if res and res.get("items"):
-                            return [
-                                i["track"]["uri"]
-                                for i in res["items"]
-                                if i.get("track") and i["track"].get("uri")
-                            ]
             except:
                 pass
 
