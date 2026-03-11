@@ -8,7 +8,6 @@ from textual import events, work, on
 
 from src.core.di import Container
 from src.state.store import Store
-from src.state.feature_stores import PlaybackStore, NetworkStore, DeviceStore, UIStore, ConfigStore
 from src.state.pubsub import PubSub
 from src.network.spotify_network import SpotifyNetwork
 from src.network.local_player import LocalPlayer
@@ -59,14 +58,10 @@ class TerminalRenderer(App):
     def __init__(self):
         super().__init__()
         self.user_prefs = Container.resolve(UserPreferences)
-        self.store = Container.resolve(Store)
+        self.store = Store()  # Singleton
         self.network = Container.resolve(SpotifyNetwork)
         self.local_player = Container.resolve(LocalPlayer)
         self.command_service = Container.resolve(CommandService)
-        self.ui_store = Container.resolve(UIStore)
-        self.playback_store = Container.resolve(PlaybackStore)
-        self.network_store = Container.resolve(NetworkStore)
-        self.device_store = Container.resolve(DeviceStore)
 
         self.leader_mode = False
         self._is_running = True
@@ -93,7 +88,7 @@ class TerminalRenderer(App):
         self.refresh_data()
         recent = self.store.get("recently_played")
         if recent:
-            self.call_from_thread(self.ui_store.update, current_tracks=recent)
+            self.call_from_thread(self.store.set, "current_tracks", recent)
         useSwitchToLocalPlayer(self)
         self.call_from_thread(self.set_timer, 2.0, lambda: useAutoPlay(self))
         self.call_from_thread(self.update_now_playing)
@@ -111,7 +106,7 @@ class TerminalRenderer(App):
                             audio_config=self.user_prefs.audio_config, access_token=token
                         )
 
-                playback = self.playback_store.get()
+                playback = self.store.get("current_playback")
                 is_playing = bool(playback and playback.get("is_playing"))
 
                 if is_playing and playback:
@@ -174,8 +169,9 @@ class TerminalRenderer(App):
     def safe_push_screen(self, screen, callback=None):
         """Enforce single-instance of same modal type."""
         screen_type = type(screen).__name__
-        if self.is_screen_active(screen_type):
-            return None
+        for s in self.screen_stack:
+            if type(s).__name__ == screen_type:
+                return None
         return self.push_screen(screen, callback)
 
     def safe_network_call(self, func, *args, **kwargs) -> Any:
@@ -205,7 +201,7 @@ class TerminalRenderer(App):
         self.leader_mode = False
         try:
             mode = "SEARCH" if self.is_screen_active("TelescopePrompt") else "NORMAL"
-            self.ui_store.update(mode=mode)
+            self.store.set("mode", mode)
         except:
             pass
         if self.is_screen_active("WhichKeyPopup"):
@@ -243,7 +239,7 @@ class TerminalRenderer(App):
         if is_leader and not in_input:
             self.leader_mode = True
             try:
-                self.ui_store.update(mode="LEADER")
+                self.store.set("mode", "LEADER")
             except:
                 pass
             if self.user_prefs.show_which_key:
@@ -322,7 +318,6 @@ class TerminalRenderer(App):
         self.safe_push_screen(LogModal())
 
     def copy_to_clipboard(self, text: str) -> None:
-        """Copy text to system clipboard."""
         from src.core.utils import copy_to_clipboard
 
         if copy_to_clipboard(text):

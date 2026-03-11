@@ -376,10 +376,9 @@ class TelescopePrompt(BaseModal[str]):
 
     def on_unmount(self):
         try:
-            from src.state.feature_stores import UIStore
-            from src.core.di import Container
+            from src.state.store import Store
 
-            Container.resolve(UIStore).update(mode="NORMAL")
+            Store().set("mode", "NORMAL")
         except Exception:
             pass
 

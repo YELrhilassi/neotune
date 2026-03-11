@@ -1,6 +1,7 @@
 import sys
 import webbrowser
 import time
+import threading
 from src.core.di import Container
 from src.state.store import Store
 from src.config.client_config import ClientConfiguration
@@ -16,14 +17,11 @@ from src.core.command_service import CommandService
 from src.core.cache import CacheStore
 from src.core.activity_service import ActivityService
 from src.ui.terminal_renderer import TerminalRenderer
+from src.state.pubsub import PubSub
 from textual.app import App, ComposeResult
 from textual.screen import Screen
 from textual.widgets import Label, Button, Static
 from textual.containers import Vertical, Center
-
-
-from src.state.pubsub import PubSub
-from src.state.feature_stores import PlaybackStore, NetworkStore, DeviceStore, UIStore, ConfigStore
 
 
 def setup_config():
@@ -32,16 +30,7 @@ def setup_config():
     Container.register(UserPreferences, UserPreferences, singleton=True)
     Container.register(PubSub, PubSub, singleton=True)
     Container.register(Store, Store, singleton=True)
-
-    # Register Feature-Specific Stores
-    Container.register(PlaybackStore, PlaybackStore, singleton=True)
-    Container.register(NetworkStore, NetworkStore, singleton=True)
-    Container.register(DeviceStore, DeviceStore, singleton=True)
-    Container.register(UIStore, UIStore, singleton=True)
-    Container.register(ConfigStore, ConfigStore, singleton=True)
-
     Container.register(CommandService, CommandService, singleton=True)
-
     Container.register(CacheStore, CacheStore, singleton=True)
     Container.register(ActivityService, ActivityService, singleton=True)
 
@@ -53,11 +42,8 @@ def setup_spotify():
         return False
 
     try:
-        # 1. Initialize core network facade
         network = SpotifyNetwork(client_config)
         Container.register(SpotifyNetwork, lambda: network, singleton=True)
-
-        # 2. Expose internal specialized services
         Container.register(AuthService, lambda: network.auth, singleton=True)
         Container.register(PlaybackService, lambda: network.playback, singleton=True)
         Container.register(LibraryService, lambda: network.library, singleton=True)
@@ -65,9 +51,8 @@ def setup_spotify():
 
         if network.is_authenticated():
             try:
-                # Update Network Store
-                Container.resolve(NetworkStore).update(is_authenticated=True, api_connected=True)
-
+                # Update Network State
+                Store().update(is_authenticated=True, api_connected=True)
                 player = Container.resolve(LocalPlayer)
             except:
                 player = LocalPlayer()
@@ -75,7 +60,6 @@ def setup_spotify():
             return True
     except Exception as e:
         print(f"Spotify initialization error: {e}")
-
     return False
 
 
@@ -109,16 +93,11 @@ class OnboardingScreen(Screen):
 
 class OnboardingApp(App):
     CSS_PATH = ["styles/main.tcss", "styles/_onboarding.tcss"]
-    BINDINGS = [
-        ("ctrl+c", "quit", "Quit"),
-        ("ctrl+q", "quit", "Quit"),
-        ("q", "quit", "Quit"),
-    ]
+    BINDINGS = [("ctrl+c", "quit", "Quit"), ("ctrl+q", "quit", "Quit"), ("q", "quit", "Quit")]
 
     def __init__(self, auth_server):
         super().__init__()
         self.auth_server = auth_server
-        self.config_done = False
 
     def on_mount(self):
         self.push_screen(OnboardingScreen("http://127.0.0.1:8080"))
@@ -128,29 +107,23 @@ class OnboardingApp(App):
         event = self.auth_server.get_event()
         if not event:
             return
-
         client_config = Container.resolve(ClientConfiguration)
-
         if event["type"] == "config":
             client_config.client_id = event["client_id"]
             client_config.client_secret = event["client_secret"]
             client_config.redirect_uri = event["redirect_uri"]
             client_config.save()
-
             network = SpotifyNetwork(client_config)
             Container.register(SpotifyNetwork, lambda: network, singleton=True)
             auth_url = network.get_auth_url()
             self.auth_server.set_auth_url(auth_url)
-
             try:
                 webbrowser.open(auth_url)
             except Exception:
                 pass
-
             self.screen.query_one("#status-lbl", Label).update(
                 "Status: [bold yellow]Waiting for Spotify Auth...[/]\n[italic]Check your browser tab to complete login.[/]"
             )
-
         elif event["type"] == "callback":
             network = Container.resolve(SpotifyNetwork)
             if network.complete_login(event["url"]):
@@ -164,13 +137,10 @@ if __name__ == "__main__":
     if not client_config.is_valid() or not setup_spotify():
         server = AuthServer(port=8080)
         server.start()
-
         onboarding = OnboardingApp(server)
         result = onboarding.run()
-
         if result != "auth_complete":
             sys.exit(0)
-
         setup_spotify()
 
     player = Container.resolve(LocalPlayer)
@@ -193,7 +163,6 @@ if __name__ == "__main__":
             try:
                 player.stop()
             except KeyboardInterrupt:
-                # If they hit Ctrl+C again, just force exit without waiting
                 print("\n[Info] Forced exit...")
                 try:
                     player.stop(wait=False)

@@ -6,7 +6,6 @@ from src.state.store import Store
 from src.core.utils import strip_icons
 from src.core.icons import Icons
 from src.core.strings import Strings
-from src.state.feature_stores import PlaybackStore, DeviceStore
 
 
 class NowPlaying(Static):
@@ -23,12 +22,13 @@ class NowPlaying(Static):
                 yield Label("", id="np-repeat-icon")
 
     def on_mount(self):
-        self.store = Container.resolve(Store)
-        self.playback_store = Container.resolve(PlaybackStore)
-        self.device_store = Container.resolve(DeviceStore)
+        self.store = Store()  # Singleton
 
-        self.playback_store.subscribe(self.safe_update_playback)
-        self.device_store.subscribe(lambda _: self.safe_update_playback(self.playback_store.get()))
+        self.store.subscribe("current_playback", self.safe_update_playback)
+        self.store.subscribe(
+            "preferred_device_name",
+            lambda _: self.safe_update_playback(self.store.get("current_playback")),
+        )
 
     def safe_update_playback(self, playback: dict | None):
         """Thread-safe update."""

@@ -14,7 +14,6 @@ from src.hooks.track_actions import (
 from src.core.utils import strip_icons
 from src.core.icons import Icons
 from src.core.strings import Strings
-from src.state.feature_stores import UIStore
 from src.core.debug_logger import DebugLogger
 
 if TYPE_CHECKING:
@@ -36,14 +35,13 @@ class TrackList(DataTable):
             f"{Icons.DURATION} Duration",
         )
         self.cursor_type = "row"
-        self.store = Container.resolve(Store)
-        self.ui_store = Container.resolve(UIStore)
-        self.ui_store.subscribe(self.handle_ui_change)
+        self.store = Store()  # Singleton
 
-    def handle_ui_change(self, state: dict):
-        tracks = state.get("current_tracks", [])
-        self.safe_load_tracks(tracks)
-        self._handle_loading(state.get("loading_states", {}))
+        self.store.subscribe("current_tracks", self.safe_load_tracks)
+        self.store.subscribe("loading_states", self._handle_ui_change)
+
+    def _handle_ui_change(self, states):
+        self._handle_loading(states)
 
     def safe_load_tracks(self, tracks: list):
         if not self.app:

@@ -166,12 +166,8 @@ class ShowDeviceCommand(Command):
                         )
                         app.store.set("preferred_device_name", device_name)
 
-                        # Update Device Store
-                        from src.state.feature_stores import DeviceStore
-
-                        Container.resolve(DeviceStore).update(
-                            preferred_id=device_id, preferred_name=device_name
-                        )
+                        # Update Device State
+                        app.store.set("preferred_device_name", device_name)
 
                         def _transfer_worker():
                             nw = Container.resolve(SpotifyNetwork)
@@ -202,10 +198,10 @@ class ShowAudioCommand(Command):
                 prefs.audio_config.update(config)
                 app.notify(f"Audio backend set to: {config['backend']}")
 
-                # Update Config Store
-                from src.state.feature_stores import ConfigStore
-
-                Container.resolve(ConfigStore).update(audio=prefs.audio_config)
+                # Update Config State
+                prefs.audio_config.update(config)
+                app.store.set("audio_config", prefs.audio_config)
+                app.notify(f"Audio backend set to: {config['backend']}")
 
                 # Restart player if running
 
@@ -253,9 +249,7 @@ class ThemeSelectorCommand(Command):
                 app.apply_theme(theme)
                 app.notify(f"Theme set to: {theme}")
                 # Update UI store for any other interested components
-                from src.state.feature_stores import ConfigStore
-
-                Container.resolve(ConfigStore).update(theme=theme)
+                app.store.set("theme", theme)
 
         app.safe_push_screen(ThemeSelector(prefs.theme), _on_theme_selected)
 

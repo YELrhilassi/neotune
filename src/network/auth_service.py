@@ -49,12 +49,10 @@ class AuthService:
                 self._debug.info("AuthService", "Login successful")
 
                 try:
-                    from src.state.feature_stores import NetworkStore
-                    from src.core.di import Container
+                    from src.state.store import Store
 
-                    Container.resolve(NetworkStore).update(
-                        is_authenticated=True, api_connected=True
-                    )
+                    store = Store()
+                    store.update(is_authenticated=True, api_connected=True)
                 except:
                     pass
 
