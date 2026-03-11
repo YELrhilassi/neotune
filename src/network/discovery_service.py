@@ -254,10 +254,98 @@ class DiscoveryService(SpotifyServiceBase):
         search_res = self.search(search_query, types="track", limit=limit)
         return [r["data"] for r in search_res if r.get("_qtype") == "track"]
 
+    def get_user_playlists(
+        self, user_id: str, limit: int = 50, offset: int = 0, fetch_details: bool = False
+    ) -> dict[str, Any]:
+        """Fetch public playlists for a specific user ID with pagination info."""
+        if not self.sp:
+            return {"items": [], "total": 0, "offset": 0}
+
+        result = self._safe_api_call(
+            self.sp.user_playlists,
+            user_id,
+            limit=limit,
+            offset=offset,
+            track_name="user_playlists_discovery",
+            cache_ttl=3600,
+        )
+        if not result:
+            return {"items": [], "total": 0, "offset": 0}
+
+        items = result.get("items", [])
+
+        # If requested, fetch full objects to get follower counts
+        if fetch_details and items:
+            detailed_items = []
+            for item in items:
+                if not item:
+                    continue
+                try:
+                    full_pl = self._safe_api_call(
+                        self.sp.playlist,
+                        item["id"],
+                        fields="id,name,uri,followers.total,tracks.total",
+                        track_name="playlist_details_discovery",
+                        cache_ttl=86400,  # Cache details for a long time
+                        suppress_status_codes=[404, 403],  # SILENCE THE MESS
+                    )
+                    if full_pl:
+                        # Merge followers into simplified item
+                        item["followers"] = full_pl.get("followers", {}).get("total", 0)
+                        detailed_items.append(item)
+                    else:
+                        detailed_items.append(item)
+                except:
+                    detailed_items.append(item)
+
+            # Sort by followers descending
+            detailed_items.sort(key=lambda x: x.get("followers", 0), reverse=True)
+            items = detailed_items
+
+        return {
+            "items": items,
+            "total": result.get("total", 0),
+            "offset": result.get("offset", 0),
+        }
+
     def resolve_special_context(self, uri: str) -> list[str]:
         """Resolve Stations or Algorithmic Playlists into track URIs."""
         if not uri or not self.sp:
             return []
+
+        if ":station:" in uri:
+            parts = uri.split(":")
+            seed_id = parts[-1]
+            if "track" in parts:
+                return [
+                    t["uri"]
+                    for t in self.get_recommendations(seed_tracks=[seed_id])
+                    if t.get("uri")
+                ]
+            elif "artist" in parts:
+                return [
+                    t["uri"]
+                    for t in self.get_recommendations(seed_artists=[seed_id])
+                    if t.get("uri")
+                ]
+
+        if ":playlist:" in uri:
+            try:
+                res = self._safe_api_call(
+                    self.sp.playlist_items,
+                    uri.split(":")[-1],
+                    limit=100,
+                    suppress_status_codes=[404, 403],
+                )
+                if res and res.get("items"):
+                    return [
+                        i["track"]["uri"]
+                        for i in res["items"]
+                        if i.get("track") and i["track"].get("uri")
+                    ]
+            except:
+                pass
+        return []
 
         if ":station:" in uri:
             parts = uri.split(":")

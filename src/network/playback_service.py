@@ -129,6 +129,12 @@ class PlaybackService(SpotifyServiceBase):
         )
 
         if not existing or is_placeholder:
+            # Check if we already recorded this exact URI recently to avoid spam
+            if self.store.get("last_recorded_uri") == uri:
+                return
+
+            self.store.set("last_recorded_uri", uri)
+
             # Use a background task to fetch metadata
             def _fetch_meta_and_record():
                 try:

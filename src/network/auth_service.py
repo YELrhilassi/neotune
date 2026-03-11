@@ -58,7 +58,7 @@ class AuthService:
                 except:
                     pass
 
-                return spotipy.Spotify(auth_manager=self._auth_manager)
+                return spotipy.Spotify(auth_manager=self._auth_manager, requests_timeout=10)
         except Exception as e:
             msg = f"Login failed: {e}"
             logger.error(msg)
@@ -85,7 +85,7 @@ class AuthService:
                 self._debug.error("AuthService", msg)
                 return None
 
-        return spotipy.Spotify(auth_manager=self._auth_manager)
+        return spotipy.Spotify(auth_manager=self._auth_manager, requests_timeout=10)
 
     def reauthenticate(self) -> None:
         self._auth_manager = None

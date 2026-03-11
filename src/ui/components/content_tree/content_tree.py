@@ -141,16 +141,25 @@ class ContentTree(Tree):
 
     @on(Tree.NodeSelected)
     def handle_selection(self, event: Tree.NodeSelected) -> None:
+        """Handles node selection (Enter/Click)."""
         node = event.node
         data = node.data
         if not data:
             return
 
         node_type = data.get("type")
-        if node_type in ["group", "category_root"]:
+        if node_type in ["group", "category_root", "spotify_user_root"]:
             if node_type == "category_root" and not node.children:
                 self.load_category_playlists(node, data.get("id"), str(node.label))
+            elif node_type == "spotify_user_root" and not node.children:
+                self.load_user_discovery_playlists(node, data.get("id"))
             node.toggle()
+            return
+
+        if node_type == "load_more_user_playlists":
+            self.load_user_discovery_playlists(
+                node.parent, data.get("user_id"), offset=data.get("offset", 0), load_more_node=node
+            )
             return
 
         node_id = data.get("id")
@@ -166,6 +175,86 @@ class ContentTree(Tree):
             self.load_made_for_you()
         elif node_type == "featured_hub":
             self.load_featured_hub()
+
+    @work(exclusive=True, thread=True)
+    def load_user_discovery_playlists(
+        self,
+        node: TreeNode,
+        user_id: str,
+        offset: int = 0,
+        load_more_node: Optional[TreeNode] = None,
+    ):
+        try:
+            if not load_more_node:
+                self.app.call_from_thread(
+                    lambda: node.add_leaf("Loading...", data={"type": "loading"})
+                )
+            else:
+
+                def _update_loading():
+                    load_more_node.label = "Loading..."
+
+                self.app.call_from_thread(_update_loading)
+
+            self.app.call_from_thread(node.expand)
+
+            # Fetch a larger batch (50) with details for sorting/formatting
+            result = self.network.discovery.get_user_playlists(
+                user_id, limit=50, offset=offset, fetch_details=True
+            )
+            playlists = result.get("items", [])
+            total = result.get("total", 0)
+            next_offset = offset + len(playlists)
+
+            def _update_ui():
+                if not load_more_node:
+                    node.remove_children()
+
+                if not playlists and not load_more_node:
+                    node.add_leaf("[dim]No playlists found[/]", data={"type": "info"})
+                    return
+
+                if load_more_node:
+                    load_more_node.remove()
+
+                for pl in playlists:
+                    if pl and isinstance(pl, dict):
+                        followers = pl.get("followers", 0)
+                        follower_str = ""
+                        if followers >= 1000000:
+                            follower_str = f" ({followers / 1000000:.1f}M followers)"
+                        elif followers >= 1000:
+                            follower_str = f" ({followers / 1000:.0f}K followers)"
+                        elif followers > 0:
+                            follower_str = f" ({followers} followers)"
+
+                        node.add_leaf(
+                            f"{strip_icons(pl.get('name', 'Playlist'))}[dim]{follower_str}[/]",
+                            data={"type": "playlist", "id": pl.get("id")},
+                        )
+
+                if next_offset < total:
+                    node.add_leaf(
+                        f"[bold #89b4fa]More... ({next_offset}/{total})[/]",
+                        data={
+                            "type": "load_more_user_playlists",
+                            "user_id": user_id,
+                            "offset": next_offset,
+                        },
+                    )
+
+                node.expand()
+
+            self.app.call_from_thread(_update_ui)
+        except:
+            if not load_more_node:
+                self.app.call_from_thread(node.remove_children)
+            else:
+
+                def _update_err():
+                    load_more_node.label = "[red]Error loading more[/]"
+
+                self.app.call_from_thread(_update_err)
 
     @work(exclusive=True, thread=True)
     def load_category_playlists(self, node: TreeNode, category_id: str, category_name: str = ""):

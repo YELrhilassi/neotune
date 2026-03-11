@@ -111,7 +111,15 @@ class StatusBar(Static):
             config_state = self.config_store.get()
             audio_cfg = config_state.get("audio", {})
             bitrate = audio_cfg.get("bitrate", self.user_prefs.audio_config.get("bitrate", "320"))
-            quality_lbl.update(f" 󰓇 {bitrate}kbps ")
+
+            # Only show quality if we are connected to reflect dynamic state
+            if final_connected:
+                quality_lbl.update(f" 󰓇 {bitrate}kbps ")
+                self.query_one("#status-quality-sep", Label).display = True
+                quality_lbl.display = True
+            else:
+                quality_lbl.display = False
+                self.query_one("#status-quality-sep", Label).display = False
 
             # 4. Update Connection Status
             net_state = self.network_store.get()

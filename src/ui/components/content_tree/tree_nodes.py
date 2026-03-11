@@ -90,7 +90,14 @@ class DiscoveryBranch(BaseBranch):
             data={"type": "featured_hub", "id": "featured_leaf"},
         )
 
-        # 2. Browse All (Group - holds genres)
+        # 2. Spotify Playlists (Group - holds playlists from the 'spotify' user)
+        sp_root = disc_root.add(
+            f"{Icons.PLAYLIST} Spotify Playlists",
+            expand=False,
+            data={"type": "spotify_user_root", "id": "spotify"},
+        )
+
+        # 3. Browse All (Group - holds genres)
         br_root = disc_root.add(
             f"{Icons.TELESCOPE} Browse All",
             expand=False,

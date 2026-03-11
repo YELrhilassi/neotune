@@ -320,3 +320,12 @@ class TerminalRenderer(App):
         from src.ui.modals.log_modal import LogModal
 
         self.safe_push_screen(LogModal())
+
+    def copy_to_clipboard(self, text: str) -> None:
+        """Copy text to system clipboard."""
+        from src.core.utils import copy_to_clipboard
+
+        if copy_to_clipboard(text):
+            self.notify("Copied to clipboard")
+        else:
+            self.notify("Failed to copy to clipboard", severity="error")
