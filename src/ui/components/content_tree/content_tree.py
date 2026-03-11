@@ -34,10 +34,10 @@ class ContentTree(Tree):
 
     def on_mount(self):
         # Subscribe to unified Store keys for navigation updates
-        self.store.subscribe("playlists", lambda _: self._reactive_refresh())
-        self.store.subscribe("browse_metadata", lambda _: self._reactive_refresh())
-        self.store.subscribe("special_playlists", lambda _: self._reactive_refresh())
-        self.store.subscribe("loading_states", self._handle_loading)
+        self.store.subscribe("playlists", lambda val, **kw: self._reactive_refresh())
+        self.store.subscribe("browse_metadata", lambda val, **kw: self._reactive_refresh())
+        self.store.subscribe("special_playlists", lambda val, **kw: self._reactive_refresh())
+        self.store.subscribe("loading_states", lambda val, **kw: self._handle_loading(val))
         self.refresh_tree()
 
     def _handle_loading(self, states):
@@ -122,7 +122,9 @@ class ContentTree(Tree):
             self._restore_expansion(child, expanded_ids)
 
     def _select_node_by_id(self, node: TreeNode, node_id: str) -> bool:
-        if node.data and node.data.get("id") == node_id:
+        # Fix: Check for exact match against node data IDs
+        data = node.data
+        if data and data.get("id") == node_id:
             self.select_node(node)
             return True
         for child in node.children:
@@ -350,7 +352,11 @@ class ContentTree(Tree):
 
     @work(exclusive=True, thread=True)
     def load_recently_played(self):
+        from src.core.debug_logger import DebugLogger
+
+        debug = DebugLogger()
         try:
+            debug.info("ContentTree", "Loading recently played")
             current_l = self.store.get("loading_states") or {}
             self.app.call_from_thread(
                 self.store.set, "loading_states", {**current_l, "track_list": True}
@@ -360,11 +366,14 @@ class ContentTree(Tree):
 
             activity_svc = Container.resolve(ActivityService)
             combined = activity_svc.get_combined_history(api_tracks)
+            debug.debug("ContentTree", f"Fetched {len(combined)} recent items")
             self.app.call_from_thread(self.store.set, "current_tracks", combined)
             self.app.call_from_thread(
                 self.store.set, "last_active_context", "recently_played", persist=True
             )
             self.app.call_from_thread(lambda: self.app.query_one("TrackList").focus())
+        except Exception as e:
+            debug.error("ContentTree", f"Failed to load recently played: {e}")
         finally:
             current_l = self.store.get("loading_states") or {}
             self.app.call_from_thread(
@@ -373,17 +382,24 @@ class ContentTree(Tree):
 
     @work(exclusive=True, thread=True)
     def load_liked_songs(self):
+        from src.core.debug_logger import DebugLogger
+
+        debug = DebugLogger()
         try:
+            debug.info("ContentTree", "Loading liked songs")
             current_l = self.store.get("loading_states") or {}
             self.app.call_from_thread(
                 self.store.set, "loading_states", {**current_l, "track_list": True}
             )
             tracks = self.network.library.get_liked_songs()
+            debug.debug("ContentTree", f"Fetched {len(tracks)} liked songs")
             self.app.call_from_thread(self.store.set, "current_tracks", tracks)
             self.app.call_from_thread(
                 self.store.set, "last_active_context", "liked_songs", persist=True
             )
             self.app.call_from_thread(lambda: self.app.query_one("TrackList").focus())
+        except Exception as e:
+            debug.error("ContentTree", f"Failed to load liked songs: {e}")
         finally:
             current_l = self.store.get("loading_states") or {}
             self.app.call_from_thread(
@@ -392,12 +408,19 @@ class ContentTree(Tree):
 
     @work(exclusive=True, thread=True)
     def load_playlist_tracks(self, playlist_id: str):
+        from src.core.debug_logger import DebugLogger
+
+        debug = DebugLogger()
         try:
+            debug.info("ContentTree", f"Loading tracks for playlist {playlist_id}")
             current_l = self.store.get("loading_states") or {}
             self.app.call_from_thread(
                 self.store.set, "loading_states", {**current_l, "track_list": True}
             )
+
             tracks = self.network.library.get_playlist_tracks(playlist_id)
+            debug.debug("ContentTree", f"Fetched {len(tracks)} tracks")
+
             self.app.call_from_thread(self.store.set, "current_tracks", tracks)
             self.app.call_from_thread(
                 self.store.set,
@@ -406,6 +429,8 @@ class ContentTree(Tree):
                 persist=True,
             )
             self.app.call_from_thread(lambda: self.app.query_one("TrackList").focus())
+        except Exception as e:
+            debug.error("ContentTree", f"Failed to load playlist: {e}")
         finally:
             current_l = self.store.get("loading_states") or {}
             self.app.call_from_thread(

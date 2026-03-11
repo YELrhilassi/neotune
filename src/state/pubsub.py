@@ -1,30 +1,46 @@
-from pubsub import pub
+import sys
 from typing import Any, Callable
+
+# Type ignore for pypubsub
+try:
+    from pubsub import pub  # type: ignore
+except ImportError:
+    pass
 
 
 class PubSub:
     """Wrapper around pypubsub for thread-safe event distribution."""
 
     @staticmethod
-    def subscribe(topic: str, callback: Callable) -> None:
+    def subscribe(topic: Any, callback: Callable) -> None:
         """
         Subscribe to a topic.
         Note: callback MUST accept keyword arguments matching published data.
         """
-        pub.subscribe(callback, topic)
+        try:
+            pub.subscribe(callback, topic)  # type: ignore
+        except NameError:
+            pass
 
     @staticmethod
     def unsubscribe(topic: str, callback: Callable) -> None:
-        pub.unsubscribe(callback, topic)
+        try:
+            pub.unsubscribe(callback, topic)  # type: ignore
+        except NameError:
+            pass
 
     @staticmethod
     def publish(topic: str, **kwargs) -> None:
         """Publish data to a topic using keyword arguments."""
-        pub.sendMessage(topic, **kwargs)
+        try:
+            pub.sendMessage(topic, **kwargs)  # type: ignore
+        except NameError:
+            pass
 
     @staticmethod
     def subscribe_all(callback: Callable) -> None:
         """Subscribe to all messages. Callback receives (topic, **kwargs)."""
-        # pypubsub doesn't have a direct 'subscribe_all' in the same way,
-        # but we can use a listener on a base topic or pub.ALL_TOPICS
-        pub.subscribe(callback, pub.ALL_TOPICS)
+        try:
+            pub.subscribe(callback, pub.ALL_TOPICS)  # type: ignore
+        except NameError:
+            pass

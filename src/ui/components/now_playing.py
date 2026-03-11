@@ -24,10 +24,10 @@ class NowPlaying(Static):
     def on_mount(self):
         self.store = Store()  # Singleton
 
-        self.store.subscribe("current_playback", self.safe_update_playback)
+        self.store.subscribe("current_playback", lambda val, **kw: self.safe_update_playback(val))
         self.store.subscribe(
             "preferred_device_name",
-            lambda _: self.safe_update_playback(self.store.get("current_playback")),
+            lambda val, **kw: self.safe_update_playback(self.store.get("current_playback")),
         )
 
     def safe_update_playback(self, playback: dict | None):

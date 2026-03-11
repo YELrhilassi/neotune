@@ -37,8 +37,9 @@ class TrackList(DataTable):
         self.cursor_type = "row"
         self.store = Store()  # Singleton
 
-        self.store.subscribe("current_tracks", self.safe_load_tracks)
-        self.store.subscribe("loading_states", self._handle_ui_change)
+        # Wrap in a lambda to safely pass only what we expect, dropping kwargs
+        self.store.subscribe("current_tracks", lambda val, **kw: self.safe_load_tracks(val))
+        self.store.subscribe("loading_states", lambda val, **kw: self._handle_ui_change(val))
 
     def _handle_ui_change(self, states):
         self._handle_loading(states)
@@ -46,6 +47,11 @@ class TrackList(DataTable):
     def safe_load_tracks(self, tracks: list):
         if not self.app:
             return
+
+        # Ensure tracks is not None and is a valid list
+        if tracks is None:
+            tracks = []
+
         import threading
 
         if threading.current_thread() is threading.main_thread():
@@ -69,7 +75,9 @@ class TrackList(DataTable):
         )
         self.clear()
         self.track_data_map = {}
+
         if not tracks:
+            self.refresh()
             return
 
         for item in tracks:
@@ -132,6 +140,7 @@ class TrackList(DataTable):
                 continue
 
         self.debug.debug("TrackList", f"Finished loading {len(self.track_data_map)} rows")
+        self.refresh()
 
     @on(DataTable.RowSelected)
     def handle_row_selection(self, event: DataTable.RowSelected):
@@ -149,7 +158,13 @@ class TrackList(DataTable):
                 if not uri or ":" not in uri:
                     return
                 if play_track(uri, self.app):
-                    self.app.call_from_thread(self.app.update_now_playing)
+                    app_ref = cast("TerminalRenderer", self.app)
+                    if app_ref and hasattr(app_ref, "update_now_playing"):
+
+                        def _update0():
+                            app_ref.update_now_playing(force=True)
+
+                        app_ref.call_from_thread(_update0)
 
             import threading
 
@@ -169,7 +184,13 @@ class TrackList(DataTable):
                 if action == "play":
                     if context_uri and context_uri not in ["liked_songs", "recently_played"]:
                         if play_track(track_data["uri"], self.app, context_uri=context_uri):
-                            self.app.call_from_thread(self.app.update_now_playing)
+                            app_ref = cast("TerminalRenderer", self.app)
+                            if app_ref and hasattr(app_ref, "update_now_playing"):
+
+                                def _update1():
+                                    app_ref.update_now_playing(force=True)
+
+                                app_ref.call_from_thread(_update1)
                     else:
                         all_uris = [
                             t.get("uri") for t in self.track_data_map.values() if t.get("uri")
@@ -179,7 +200,13 @@ class TrackList(DataTable):
                         except:
                             offset_pos = 0
                         if play_track(all_uris, self.app, offset_position=offset_pos):
-                            self.app.call_from_thread(self.app.update_now_playing)
+                            app_ref = cast("TerminalRenderer", self.app)
+                            if app_ref and hasattr(app_ref, "update_now_playing"):
+
+                                def _update2():
+                                    app_ref.update_now_playing(force=True)
+
+                                app_ref.call_from_thread(_update2)
                 elif action == "radio":
                     start_track_radio(track_data["uri"], self.app)
                 elif action == "save":

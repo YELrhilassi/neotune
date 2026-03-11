@@ -33,11 +33,11 @@ class StatusBar(Static):
         self.user_prefs = Container.resolve(UserPreferences)
 
         # Subscribe to unified Store keys
-        self.store.subscribe("current_playback", lambda _: self.safe_update())
-        self.store.subscribe("api_connected", lambda _: self.safe_update())
-        self.store.subscribe("is_authenticated", lambda _: self.safe_update())
-        self.store.subscribe("preferred_device_name", lambda _: self.safe_update())
-        self.store.subscribe("mode", lambda _: self.safe_update())
+        self.store.subscribe("current_playback", lambda val, **kw: self.safe_update())
+        self.store.subscribe("api_connected", lambda val, **kw: self.safe_update())
+        self.store.subscribe("is_authenticated", lambda val, **kw: self.safe_update())
+        self.store.subscribe("preferred_device_name", lambda val, **kw: self.safe_update())
+        self.store.subscribe("mode", lambda val, **kw: self.safe_update())
 
     def safe_update(self):
         """Thread-safe update call."""

@@ -71,6 +71,7 @@ class Store:
         }
 
         self._state_lock = threading.RLock()
+        self._listener_refs = []
         self._load_persistent_state()
         self._initialized = True
 
@@ -98,7 +99,11 @@ class Store:
 
     def get(self, key: str, default: Any = None) -> Any:
         with self._state_lock:
-            return self._state.get(key, default)
+            val = self._state.get(key, default)
+            # Return a copy for mutable types to prevent accidental in-place modification
+            if isinstance(val, (list, dict)):
+                return copy.deepcopy(val)
+            return val
 
     def set(self, key: str, value: Any, persist: bool = False) -> None:
         """Update a state value and notify subscribers instantly."""
@@ -118,7 +123,9 @@ class Store:
                     self._save_persistent_state()
 
         if changed:
+            # Topic: state.<key>, keyword arg: value
             PubSub.publish(f"state.{key}", value=value)
+            # Topic: state_changed, keyword args: key, value
             PubSub.publish("state_changed", key=key, value=value)
 
     def update(self, **kwargs) -> None:
@@ -127,20 +134,33 @@ class Store:
             for k, v in kwargs.items():
                 self.set(k, v)
 
-    def subscribe(self, key: str, callback: Callable[[Any], None]) -> None:
-        """Subscribe to a specific state key."""
+    def subscribe(self, key: str, callback: Callable) -> None:
+        """Subscribe to a specific state key. Callback receives the new value."""
 
-        def listener(value=None):
+        # Use a wrapper that matches pypubsub's requirements
+        def listener(value=None, **kwargs):
             callback(value)
 
-        PubSub.subscribe(f"state.{key}", listener)
-        # Immediate notification
-        callback(self.get(key))
+        # We MUST store the listener to prevent weakref garbage collection
+        if not hasattr(self, "_listener_refs"):
+            self._listener_refs = []
+        self._listener_refs.append(listener)
 
-    def subscribe_all(self, callback: Callable[[str, Any], None]) -> None:
-        """Subscribe to all state changes."""
+        topic = f"state.{key}"
+        PubSub.subscribe(topic, listener)
+        # Immediate notification with current value
+        val = self.get(key)
+        callback(val)
 
-        def listener(key=None, value=None):
+    def subscribe_all(self, callback: Callable) -> None:
+        """Subscribe to all state changes. Callback receives (key, value)."""
+
+        def listener(key=None, value=None, **kwargs):
             callback(key, value)
 
-        PubSub.subscribe("state_changed", listener)
+        if not hasattr(self, "_listener_refs"):
+            self._listener_refs = []
+        self._listener_refs.append(listener)
+
+        topic_name = "state_changed"
+        PubSub.subscribe(topic_name, listener)
