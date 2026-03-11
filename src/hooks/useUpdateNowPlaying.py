@@ -16,15 +16,13 @@ def useUpdateNowPlaying(app, force=False):
 
         # 1. Fetch playback state (debounced by service)
         playback = network.get_current_playback(force=force)
-        
+
         # 2. Always update the store to handle transitions to/from None (nothing playing)
         current = store.get("current_playback")
         if current != playback:
             store.set("current_playback", playback)
 
-        if playback is not None:
-            # 3. Periodically sync devices too (every few heartbeats)
-
+        # 3. Periodically sync devices too (every few heartbeats)
         # We'll use the store to track when we last did this
         last_dev_sync = store.get("_last_device_sync") or 0
         import time
