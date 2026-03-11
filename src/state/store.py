@@ -1,23 +1,34 @@
 import json
 import os
+import threading
+import copy
 from pathlib import Path
-from typing import Callable, Dict, Any, List
-
-
-from src.core.di import Container
+from typing import Callable, Dict, Any, List, Set, Optional
 from src.state.pubsub import PubSub
 
 
 class Store:
     """
-    A centralized, reactive state store with built-in persistence.
-    Follows the Observer pattern to notify UI components of state transitions.
+    Centralized, thread-safe, and reactive state store.
+    Uses pypubsub for instant notifications across the application.
     """
 
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super(Store, cls).__new__(cls)
+                cls._instance._initialized = False
+            return cls._instance
+
     def __init__(self):
+        if self._initialized:
+            return
+
         self.config_dir = Path.home() / ".config" / "spotify-tui"
         self.state_file = self.config_dir / "state.json"
-        self._pubsub = PubSub()
 
         self._state: Dict[str, Any] = {
             "playlists": [],
@@ -27,10 +38,11 @@ class Store:
             "current_playback": None,
             "devices": [],
             "preferred_device_id": None,
+            "preferred_device_name": "No Device",
             "is_authenticated": False,
             "api_connected": False,
             "auth_error": None,
-            "last_active_context": None,  # spotify:playlist:xxxx or spotify:album:xxxx
+            "last_active_context": None,
             "last_active_node_id": None,
             "user_profile": None,
             "browse_metadata": {
@@ -48,104 +60,87 @@ class Store:
                 "page_down": "D",
             },
             "special_playlists": [],
+            "mode": "NORMAL",
         }
 
-        # Keys to persist across sessions
         self._persistent_keys = {
             "last_active_context",
             "last_active_node_id",
             "preferred_device_id",
+            "preferred_device_name",
         }
 
-        self._subscribers: Dict[str, List[Callable[[Any], None]]] = {}
-        self._global_subscribers: List[Callable] = []
-
+        self._state_lock = threading.RLock()
         self._load_persistent_state()
+        self._initialized = True
 
     def _load_persistent_state(self):
         if self.state_file.exists():
             try:
                 with open(self.state_file, "r") as f:
                     data = json.load(f)
-                    for k in self._persistent_keys:
-                        if k in data:
-                            self._state[k] = data[k]
+                    with self._state_lock:
+                        for k in self._persistent_keys:
+                            if k in data:
+                                self._state[k] = data[k]
             except Exception:
                 pass
 
     def _save_persistent_state(self):
         try:
             self.config_dir.mkdir(parents=True, exist_ok=True)
-            data = {k: self._state[k] for k in self._persistent_keys}
+            with self._state_lock:
+                data = {k: self._state[k] for k in self._persistent_keys if k in self._state}
             with open(self.state_file, "w") as f:
                 json.dump(data, f)
         except Exception:
             pass
 
-    def get(self, key: str) -> Any:
-        return self._state.get(key)
+    def get(self, key: str, default: Any = None) -> Any:
+        with self._state_lock:
+            return self._state.get(key, default)
 
     def set(self, key: str, value: Any, persist: bool = False) -> None:
-        if key not in self._state or self._state[key] != value:
-            self._state[key] = value
-            if persist or key in self._persistent_keys:
-                if persist:
-                    self._persistent_keys.add(key)
-                self._save_persistent_state()
+        """Update a state value and notify subscribers instantly."""
+        changed = False
+        with self._state_lock:
+            current = self._state.get(key)
+            if current != value:
+                if isinstance(value, (list, dict)):
+                    self._state[key] = copy.deepcopy(value)
+                else:
+                    self._state[key] = value
 
-            # Bridge to Feature Stores
-            try:
-                from src.state.feature_stores import (
-                    PlaybackStore,
-                    NetworkStore,
-                    DeviceStore,
-                    UIStore,
-                )
+                changed = True
+                if persist or key in self._persistent_keys:
+                    if persist:
+                        self._persistent_keys.add(key)
+                    self._save_persistent_state()
 
-                if key == "current_playback":
-                    Container.resolve(PlaybackStore).set(value)
-                    if value and value.get("device"):
-                        Container.resolve(DeviceStore).update(
-                            preferred_name=value["device"].get("name")
-                        )
-                elif key == "api_connected":
-                    Container.resolve(NetworkStore).update(api_connected=value)
-                elif key == "is_authenticated":
-                    Container.resolve(NetworkStore).update(is_authenticated=value)
-                elif key == "current_tracks":
-                    # Deep update for tracks to ensure reactivity
-                    Container.resolve(UIStore).update(current_tracks=list(value) if value else [])
-                elif key == "playlists":
-                    Container.resolve(UIStore).update(playlists=list(value) if value else [])
-                elif key == "special_playlists":
-                    Container.resolve(UIStore).update(
-                        special_playlists=list(value) if value else []
-                    )
-                elif key == "browse_metadata":
-                    Container.resolve(UIStore).update(browse_metadata=dict(value) if value else {})
-                elif key == "loading_states":
-                    Container.resolve(UIStore).update(loading_states=dict(value) if value else {})
-                elif key == "preferred_device_name":
-                    Container.resolve(DeviceStore).update(preferred_name=value)
-                elif key == "devices":
-                    Container.resolve(DeviceStore).update(available=list(value) if value else [])
-            except:
-                pass
+        if changed:
+            PubSub.publish(f"state.{key}", value=value)
+            PubSub.publish("state_changed", key=key, value=value)
 
-            # Use PubSub for notifications
-            self._pubsub.publish(f"store:{key}", value)
-            self._pubsub.publish("store:*", (key, value))
+    def update(self, **kwargs) -> None:
+        """Atomic multi-key update."""
+        with self._state_lock:
+            for k, v in kwargs.items():
+                self.set(k, v)
 
     def subscribe(self, key: str, callback: Callable[[Any], None]) -> None:
-        self._pubsub.subscribe(f"store:{key}", callback)
-        # Notify immediately with current state
-        callback(self._state.get(key))
+        """Subscribe to a specific state key."""
 
-    def subscribe_all(self, callback: Callable) -> None:
-        self._pubsub.subscribe_all(
-            lambda topic, data: callback() if topic.startswith("store:") else None
-        )
+        def listener(value=None):
+            callback(value)
 
-    def _notify(self, key: str, value: Any) -> None:
-        # Legacy method, now handled by set() via PubSub
-        pass
+        PubSub.subscribe(f"state.{key}", listener)
+        # Immediate notification
+        callback(self.get(key))
+
+    def subscribe_all(self, callback: Callable[[str, Any], None]) -> None:
+        """Subscribe to all state changes."""
+
+        def listener(key=None, value=None):
+            callback(key, value)
+
+        PubSub.subscribe("state_changed", listener)

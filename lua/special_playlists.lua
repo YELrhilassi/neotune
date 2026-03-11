@@ -9,8 +9,8 @@ spotify_tui.special_playlists = {
 		description = "Your weekly mixtape of fresh music",
 	},
 	{
-		name = "Discover Weekly 2",
-		uri = "spotify:playlist:37i9dQZEVXcXg9Q3RuG7o9",
+		name = "Day playlist",
+		uri = "spotify:playlist:37i9dQZF1EP6YuccBxUcC1",
 	},
 	{
 		name = "Daily mix 3",

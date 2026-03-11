@@ -1,56 +1,30 @@
-from typing import Any, Callable, Dict, List, Set, Optional
-import threading
+from pubsub import pub
+from typing import Any, Callable
 
 
 class PubSub:
-    """A thread-safe, centralized PubSub system (Singleton)."""
+    """Wrapper around pypubsub for thread-safe event distribution."""
 
-    _instance = None
-    _lock = threading.Lock()
+    @staticmethod
+    def subscribe(topic: str, callback: Callable) -> None:
+        """
+        Subscribe to a topic.
+        Note: callback MUST accept keyword arguments matching published data.
+        """
+        pub.subscribe(callback, topic)
 
-    def __new__(cls):
-        with cls._lock:
-            if cls._instance is None:
-                cls._instance = super(PubSub, cls).__new__(cls)
-                cls._instance._subscribers = {}
-                cls._instance._global_subscribers = set()
-            return cls._instance
+    @staticmethod
+    def unsubscribe(topic: str, callback: Callable) -> None:
+        pub.unsubscribe(callback, topic)
 
-    def __init__(self):
-        # Initialized via __new__ if singleton, but for safety:
-        if not hasattr(self, "_subscribers"):
-            self._subscribers = {}
-            self._global_subscribers = set()
-            self._lock = threading.Lock()
+    @staticmethod
+    def publish(topic: str, **kwargs) -> None:
+        """Publish data to a topic using keyword arguments."""
+        pub.sendMessage(topic, **kwargs)
 
-    def subscribe(self, topic: str, callback: Callable[[Any], None]) -> None:
-        with self._lock:
-            if topic not in self._subscribers:
-                self._subscribers[topic] = set()
-            self._subscribers[topic].add(callback)
-
-    def subscribe_all(self, callback: Callable[[str, Any], None]) -> None:
-        with self._lock:
-            self._global_subscribers.add(callback)
-
-    def unsubscribe(self, topic: str, callback: Callable[[Any], None]) -> None:
-        with self._lock:
-            if topic in self._subscribers:
-                self._subscribers[topic].discard(callback)
-
-    def publish(self, topic: str, data: Any) -> None:
-        with self._lock:
-            subs = list(self._subscribers.get(topic, []))
-            globals = list(self._global_subscribers)
-
-        for callback in subs:
-            try:
-                callback(data)
-            except:
-                pass
-
-        for callback in globals:
-            try:
-                callback(topic, data)
-            except:
-                pass
+    @staticmethod
+    def subscribe_all(callback: Callable) -> None:
+        """Subscribe to all messages. Callback receives (topic, **kwargs)."""
+        # pypubsub doesn't have a direct 'subscribe_all' in the same way,
+        # but we can use a listener on a base topic or pub.ALL_TOPICS
+        pub.subscribe(callback, pub.ALL_TOPICS)

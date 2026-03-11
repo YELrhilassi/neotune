@@ -17,16 +17,20 @@ from src.core.cache import CacheStore
 logger = get_logger("spotify_service")
 
 
+class ConnectivityTracker:
+    """Shared state for connection health monitoring."""
+
+    consecutive_failures = 0
+    failure_threshold = 3
+    lock = threading.Lock()
+
+
 class SpotifyServiceBase:
     """Base class for Spotify services with shared API call logic."""
 
     _last_call_times: dict[str, float] = {}
     _call_lock = threading.Lock()
-
-    # Dampening logic for connection status
-    _consecutive_failures = 0
-    _failure_threshold = 3  # Fail 3 times before marking as disconnected
-    _health_lock = threading.Lock()
+    _health = ConnectivityTracker()
 
     def __init__(self, sp: Optional[spotipy.Spotify] = None):
         self.sp = sp
@@ -38,28 +42,26 @@ class SpotifyServiceBase:
         """Update global connectivity state with dampening."""
         try:
             from src.state.store import Store
-            from src.state.feature_stores import NetworkStore
-            from src.core.di import Container as DIContainer
 
-            with cls._health_lock:
+            store = Store()  # Singleton
+
+            with cls._health.lock:
                 if success:
-                    cls._consecutive_failures = 0
+                    cls._health.consecutive_failures = 0
                     should_mark_online = True
                     should_mark_offline = False
                 else:
-                    cls._consecutive_failures += 1
+                    cls._health.consecutive_failures += 1
                     should_mark_online = False
-                    should_mark_offline = cls._consecutive_failures >= cls._failure_threshold
-
-            store = DIContainer.resolve(Store)
-            net_store = DIContainer.resolve(NetworkStore)
+                    should_mark_offline = (
+                        cls._health.consecutive_failures >= cls._health.failure_threshold
+                    )
 
             if success:
                 store.set("api_connected", True)
-                net_store.update(api_connected=True, is_authenticated=True)
+                store.set("is_authenticated", True)
             elif should_mark_offline:
                 store.set("api_connected", False)
-                net_store.update(api_connected=False)
         except:
             pass
 
@@ -74,88 +76,40 @@ class SpotifyServiceBase:
         default_return: Any = None,
         track_name: Optional[str] = None,
         cache_ttl: Optional[int] = None,
-        min_interval: Optional[float] = 1.0,  # Prevent spamming the same endpoint
+        min_interval: Optional[float] = 1.0,
         suppress_status_codes: Optional[list[int]] = None,
         **kwargs,
     ) -> Any:
-        """Execute API call with error handling, tracking, and optional caching.
-
-        Args:
-            func: API function to call
-            *args: Positional arguments
-            default_return: Value to return on failure
-            track_name: Optional name for network tracking
-            cache_ttl: Optional TTL in seconds for caching the result
-            min_interval: Minimum time between calls to the same endpoint
-            suppress_status_codes: HTTP status codes to catch without error logging
-            **kwargs: Keyword arguments
-        """
         if not self.sp:
             return default_return
 
         endpoint = track_name or func.__name__
 
-        # Global Rate Limiting / Debouncing
         if min_interval:
             with self._call_lock:
                 now = time.time()
                 last_call = self._last_call_times.get(endpoint, 0)
                 if now - last_call < min_interval:
-                    # Silent return, no log Start to avoid spam
                     return default_return
                 self._last_call_times[endpoint] = now
 
-        # 1. Check Cache
         if cache_ttl is not None:
             cache_key = f"api:{endpoint}:{args}:{kwargs}"
             cached_val = self._cache.get(cache_key)
             if cached_val is not None:
-                self._debug.debug("SpotifyService", f"Cache hit: {endpoint}")
                 return cached_val
 
-        # 2. Prepare for Tracking
         request_id = f"req_{str(uuid.uuid4())[:8]}"
-
-        # Capture both positional and keyword arguments for debugging
-        tracked_params = {}
-        if args:
-            tracked_params["args"] = args
-        if kwargs:
-            tracked_params.update(kwargs)
-
-        self._debug.network_start(request_id, "API", endpoint, tracked_params)
+        self._debug.network_start(request_id, "API", endpoint, kwargs)
         start_time = time.time()
 
         try:
             result = func(*args, **kwargs)
             duration_ms = (time.time() - start_time) * 1000
-
-            # 3. Track success
             self._update_connectivity(True)
-
-            # Capture full response snippet for debugging
-            try:
-                # Use a custom serializer for complex objects if needed
-                res_str = json.dumps(result, indent=2, default=str)
-                size = len(res_str)
-                # Keep a reasonably large snippet for 'Details'
-                body_snippet = (
-                    result
-                    if size < 5000
-                    else {
-                        "info": "Response too large for snippet",
-                        "size": size,
-                        "preview": str(result)[:500],
-                    }
-                )
-            except:
-                size = 0
-                body_snippet = str(result)[:1000]
-
-            self._debug.network_end(request_id, status_code=200, size=size, body=body_snippet)
+            self._debug.network_end(request_id, status_code=200, size=0, body=result)
             self._debug.track_performance(endpoint, duration_ms)
 
-            # 4. Save to Cache
             if cache_ttl is not None:
                 cache_key = f"api:{endpoint}:{args}:{kwargs}"
                 self._cache.set(cache_key, result, ttl=cache_ttl)
@@ -164,34 +118,19 @@ class SpotifyServiceBase:
         except SpotifyException as e:
             duration_ms = (time.time() - start_time) * 1000
             status_code = getattr(e, "http_status", None)
-
-            # Dampened offline marking
             self._update_connectivity(False)
 
-            # Check if we should suppress the error log
             should_suppress = suppress_status_codes and status_code in suppress_status_codes
-
             if not should_suppress:
-                error_msg = f"Spotify API error ({endpoint}): {e}"
-                logger.warning(error_msg)
-                # Direct log to debug service for visibility
-                self._debug.error("Network", error_msg)
+                self._debug.error("Network", f"Spotify API error ({endpoint}): {e}")
 
             self._debug.network_end(request_id, error=str(e), status_code=status_code)
             self._debug.track_performance(endpoint, duration_ms)
             return default_return
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
-
-            # Dampened offline marking
             self._update_connectivity(False)
-
-            error_msg = f"Unexpected error in API call ({endpoint}): {e}"
-            logger.error(error_msg)
-
-            # Direct log to debug service
-            self._debug.error("Network", error_msg)
-
+            self._debug.error("Network", f"Unexpected error in API call ({endpoint}): {e}")
             self._debug.network_end(request_id, error=str(e))
             self._debug.track_performance(endpoint, duration_ms)
             return default_return
