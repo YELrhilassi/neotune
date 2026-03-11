@@ -73,8 +73,7 @@ class NowPlaying(Static):
             shuffle_lbl.update(f"[#89b4fa] {shuffle_icon} [/]")
             repeat_lbl.update(f"[#89b4fa] {repeat_icon} [/]")
         else:
-            device_state = self.device_store.get()
-            device_name = device_state.get("preferred_name") or "No Active Device"
+            device_name = self.store.get("preferred_device_name") or "No Active Device"
             track_lbl.update(
                 f"[dim]{Icons.PAUSE} {Strings.PAUSED_OR_NOTHING}[/] [bold #89b4fa]({device_name})[/]"
             )
