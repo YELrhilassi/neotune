@@ -98,16 +98,16 @@ DataTable > .datatable--header {
 DataTable > .datatable--cursor {
     background: $accent;
     color: $surface;
-    text-style: bold;
+}
+
+/* Selected row (when not focused) */
+DataTable > .datatable--row-selected {
+    background: $overlay;
 }
 
 OptionList {
-    background: transparent;
-    border: round $border-color;
-}
-
-OptionList:focus {
-    border: round $primary;
+    background: $surface;
+    border: none;
 }
 
 OptionList > .option-list--option {
@@ -121,12 +121,12 @@ OptionList > .option-list--option-highlighted {
 }
 
 /* ==========================================================================
-   STATUS BAR (Neovim Style)
+   STATUS BAR (Modern Powerline)
    ========================================================================== */
 #status-bar {
     height: 1;
     dock: bottom;
-    background: $bg;
+    background: $surface;
     color: $fg;
     padding: 0;
 }
@@ -134,118 +134,73 @@ OptionList > .option-list--option-highlighted {
 #status-container {
     layout: horizontal;
     width: 100%;
+    height: 1;
 }
 
-#status-mode {
-    color: $surface;
+#status-left-group, #status-right-group {
+    width: auto;
+    height: 1;
+    layout: horizontal;
+}
+
+#status-middle {
+    width: 1fr;
+    height: 1;
+    background: $surface;
+}
+
+/* Base styling for labels */
+#status-mode, #status-device, #status-quality, #status-connection {
+    height: 1;
+    content-align: center middle;
     text-style: bold;
     padding: 0 1;
 }
 
+/* Mode Segment */
+#status-mode { color: $surface; }
 #status-mode.normal { background: $primary; }
 #status-mode.leader { background: $warning; }
 #status-mode.search { background: $success; }
 
-#status-mode-sep {
-    background: $overlay;
-}
-
+#status-mode-sep { background: $overlay; }
 #status-mode-sep.normal { color: $primary; }
 #status-mode-sep.leader { color: $warning; }
 #status-mode-sep.search { color: $success; }
 
-#status-left {
+/* Device Segment */
+#status-device {
     background: $overlay;
     color: $fg;
-    width: auto;
 }
 
-#status-middle {
+#status-device-sep {
     background: $surface;
-    width: 1fr;
+    color: $overlay;
 }
 
-#status-right-sep {
+/* --- Right Side --- */
+#status-quality-sep {
     background: $surface;
-    color: $primary;
+    color: $overlay;
 }
 
-#status-right {
-    background: $primary;
+#status-quality {
+    background: $overlay;
+    color: $fg;
+}
+
+#status-connection-sep {
+    background: $overlay;
+}
+#status-connection-sep.connected { color: $success; }
+#status-connection-sep.disconnected { color: $error; }
+
+#status-connection {
     color: $surface;
-    width: auto;
-    text-style: bold;
-    padding: 0 1;
 }
-
-/* ==========================================================================
-   NOW PLAYING
-   ========================================================================== */
-#now-playing {
-    height: auto;
-    dock: top;
-    background: $bg;
-    border: round $accent;
-    margin: 1 2 0 2;
-    padding: 1 2;
-}
-
-#np-container {
-    height: auto;
-    layout: horizontal;
-    align: left middle;
-}
-
-#np-info {
-    width: 1fr;
-    height: auto;
-    content-align: left middle;
-}
-
-#np-controls {
-    width: auto;
-    height: auto;
-    content-align: right middle;
-    align: right middle;
-}
-
-#np-track-name, #np-artist-name {
-    height: auto;
-}
-
-#np-shuffle-icon, #np-repeat-icon {
-    margin-left: 1;
-}
-
-/* ==========================================================================
-   MAIN CONTENT
-   ========================================================================== */
-#main-container {
-    height: 1fr;
-    layout: horizontal;
-}
-
-#sidebar {
-    width: 35;
-    height: 1fr;
-    dock: left;
-    border: round $border-color;
-}
-
-#sidebar:focus {
-    border: round $accent;
-}
-
-#track-list {
-    height: 1fr;
-    width: 1fr;
-    background: $bg;
-    border: round $border-color;
-}
-
-#track-list:focus {
-    border: round $primary;
-}
+#status-connection.connected { background: $success; }
+#status-connection.disconnected { background: $error; }
 
 /* ==========================================================================
    MODALS & DIALOGS
@@ -310,7 +265,7 @@ WhichKeyPopup {
     height: auto;
     border: round $accent;
     border-title-color: $primary;
-    border-subtitle-color: $text;
+    border-subtitle-color: $fg;
     background: rgba(24, 24, 37, 0.95);
     padding: 0 2;
     margin: 0 1;
@@ -319,262 +274,4 @@ WhichKeyPopup {
 #which-key-content {
     height: auto;
     width: auto;
-}
-
-CommandPrompt {
-    align: center middle;
-    padding-bottom: 2;
-    background: transparent;
-}
-
-#command-prompt-container {
-    align: center middle;
-    width: 60%;
-    height: 50%;
-    background: $surface;
-    border: round $accent;
-    padding: 1 2;
-}
-
-#command-input {
-    dock: top;
-    background: transparent;
-    color: $fg;
-    border: round $fg;
-}
-
-#app-logs {
-    width: 80%;
-    height: 80%;
-    background: $bg;
-    border: round $primary;
-    padding: 1;
-}
-
-/* ==========================================================================
-   TELESCOPE SEARCH
-   ========================================================================== */
-#telescope-wrapper {
-    width: 80%;
-    height: 80%;
-    background: $surface;
-    border: none;
-    layout: vertical;
-}
-
-#telescope-header {
-    height: 3;
-    dock: top;
-    border: round $border-color;
-    background: transparent;
-    margin-bottom: 1;
-}
-
-#telescope-header:focus-within {
-    border: round $primary;
-}
-
-#telescope-header.insert-mode {
-    border: round $success;
-}
-
-#telescope-tabs {
-    height: 1fr;
-    background: transparent;
-    padding: 0;
-    margin: 0;
-}
-
-#telescope-icon {
-    padding: 1 1 0 1;
-    color: $success;
-    width: auto;
-    height: auto;
-}
-
-#telescope-input {
-    width: 1fr;
-    border: none;
-    background: transparent;
-    color: $fg;
-}
-
-#telescope-hints {
-    width: auto;
-    padding-right: 1;
-    content-align: right middle;
-}
-
-#telescope-body, .telescope-body {
-    height: 1fr;
-    layout: horizontal;
-    margin-top: 0;
-}
-
-#telescope-results, .telescope-results {
-    width: 50%;
-    height: 1fr;
-    border: round $panel;
-    background: transparent;
-    margin-right: 1;
-}
-
-#telescope-results:focus-within, .telescope-results:focus-within {
-    border: round $success;
-}
-
-#telescope-preview, .telescope-preview {
-    width: 50%;
-    height: 1fr;
-    border: round $panel;
-    background: transparent;
-    padding: 1;
-    layout: vertical;
-}
-
-#telescope-preview:focus-within, .telescope-preview:focus-within {
-    border: round $accent;
-}
-
-.telescope-empty-state {
-    width: 100%;
-    height: 100%;
-    content-align: center middle;
-    color: $text;
-}
-
-.telescope-results-list {
-    height: 1fr;
-    width: 1fr;
-    background: transparent;
-    border: none;
-}
-
-.telescope-results-list:focus {
-    border: none;
-}
-
-#telescope-preview-info, .telescope-preview-info {
-    height: auto;
-    margin-bottom: 1;
-}
-
-#telescope-preview-tracks, .telescope-preview-tracks {
-    border: none;
-    background: transparent;
-    height: 1fr;
-}
-
-#telescope-preview-tracks:focus, .telescope-preview-tracks:focus {
-    background: $surface;
-}
-
-/* ==========================================================================
-   ONBOARDING (Setup / Login)
-   ========================================================================== */
-SetupScreen, LoginScreen, PlayerAuthScreen {
-    align: center middle;
-}
-
-#setup-mini-card {
-    width: 60;
-    height: auto;
-    background: transparent;
-    border: none;
-    padding: 0;
-}
-
-#setup-title-minimal {
-    text-align: center;
-    width: 100%;
-    color: $accent;
-    text-style: bold;
-    margin-bottom: 1;
-}
-
-#setup-simple-help {
-    color: $dim-text;
-    margin-bottom: 2;
-    text-align: center;
-    padding: 0 4;
-}
-
-.minimal-section-title {
-    color: $primary;
-    text-style: bold;
-    margin-top: 1;
-    margin-bottom: 1;
-    text-align: center;
-}
-
-.minimal-input {
-    margin-bottom: 1;
-    height: 1;
-    border: none;
-    background: $surface;
-    color: $fg;
-    padding: 0 1;
-}
-
-.minimal-input:focus {
-    background: $overlay;
-}
-
-.minimal-text-area {
-    margin-bottom: 1;
-    height: 4;
-    border: none;
-    background: $surface;
-    color: $fg;
-}
-
-.minimal-text-area:focus {
-    background: $bg;
-}
-
-#setup-mini-actions, #login-mini-actions {
-    margin-top: 2;
-    height: 3;
-    align: center middle;
-}
-
-.small-btn {
-    min-width: 15;
-    height: 1;
-    margin: 0 1;
-    border: none;
-    background: $overlay;
-    color: $fg;
-}
-
-.small-btn:focus {
-    background: $primary;
-    color: $surface;
-    text-style: bold;
-}
-
-/* ==========================================================================
-   NOTIFICATIONS (Toasts)
-   ========================================================================== */
-ToastRack {
-    align: center top;
-}
-
-Toast {
-    width: auto;
-    min-width: 30;
-    max-width: 60;
-    margin-top: 1;
-    border: round $accent;
-    background: $bg;
-    color: $fg;
-}
-
-Toast.-information { border: round $primary; }
-Toast.-warning { border: round $warning; }
-Toast.-error { border: round $error; }
-
-LoadingIndicator {
-    color: $primary;
-    background: transparent;
 }

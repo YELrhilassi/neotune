@@ -58,8 +58,11 @@ class PlaybackService(SpotifyServiceBase):
 
             # 2. Actual API Call (Throttled by Base Service min_interval)
             # Use a slightly longer interval here to strictly control traffic
+            # If force is True, we bypass the internal min_interval of _safe_api_call
             state = self._safe_api_call(
-                self.sp.current_playback, track_name="current_playback", min_interval=5.0
+                self.sp.current_playback,
+                track_name="current_playback",
+                min_interval=None if force else 5.0,
             )
 
             # If API returns None (due to throttling or error), use last known

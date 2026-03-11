@@ -21,7 +21,7 @@ class CollectionBranch(BaseBranch):
     """Handles the user's primary collection entries (Made For You, Liked, Recent)."""
 
     def build(self):
-        # 1. Made For You (Leaf - At the very top)
+        # 1. Made For You (Leaf - Exactly as requested, no username)
         self.root.add_leaf(
             f"{Icons.HEART} Made For You",
             data={"type": "made_for_you", "id": "made_for_you_leaf"},
@@ -71,27 +71,27 @@ class PlaylistsBranch(BaseBranch):
 
 
 class DiscoveryBranch(BaseBranch):
-    """Handles the unified Discovery section."""
+    """Handles the Discovery section with Featured and Browse groups."""
 
     def build(self):
         metadata = self.store.get("browse_metadata") or {}
         categories = metadata.get("categories", [])
 
-        # Discovery Group
+        # Discovery Group (Collapsible)
         disc_root = self.root.add(
             f"{Icons.SEARCH} Discovery",
             expand=True,
             data={"type": "group", "id": "discovery_group"},
         )
 
-        # 1. Featured (Leaf)
+        # 1. Featured (Leaf - loads picks into main area)
         disc_root.add_leaf(
-            f"{Icons.FEATURED} Featured",
+            f"{Icons.STAR} Featured",
             data={"type": "featured_hub", "id": "featured_leaf"},
         )
 
-        # 2. Categories (Group)
-        cat_root = disc_root.add(
+        # 2. Browse All (Group - holds genres)
+        br_root = disc_root.add(
             f"{Icons.TELESCOPE} Browse All",
             expand=False,
             data={"type": "group", "id": "browse_all_group"},
@@ -105,31 +105,21 @@ class DiscoveryBranch(BaseBranch):
             if not cat_id or not cat_name:
                 continue
 
+            # Filter out algorithmic ones from tree as they are in the 'Made For You' leaf hub
             name_lower = cat_name.lower()
-            # Sort into 'Personalized' if algorithmic, but user wants 'Browse All' as a group
-            is_algorithmic = any(
-                term in name_lower
-                for term in [
-                    "made for you",
-                    "daily mix",
-                    "discover weekly",
-                    "release radar",
-                    "mix",
-                    "dj",
-                ]
+            is_algo = any(
+                term in name_lower for term in ["made for you", "mix", "discover weekly", "radar"]
             )
-
-            # Filter algorithmic from 'Browse All' as they go to 'Made For You' leaf
-            if is_algorithmic or cat_id == "made-for-you" or str(cat_id).startswith("0JQ5D"):
+            if is_algo or cat_id == "made-for-you" or str(cat_id).startswith("0JQ"):
                 continue
 
-            cat_root.add(
+            br_root.add(
                 strip_icons(cat_name),
                 data={"type": "category_root", "id": cat_id},
             )
 
-        if not cat_root.children:
+        if not br_root.children:
             try:
-                cat_root.remove()
+                br_root.remove()
             except:
                 pass

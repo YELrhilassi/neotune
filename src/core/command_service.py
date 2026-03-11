@@ -157,9 +157,52 @@ class ShowDeviceCommand(Command):
             if devices_data and devices_data.get("devices"):
                 devices = devices_data["devices"]
                 active_id = next((d["id"] for d in devices if d["is_active"]), None)
-                app.call_from_thread(app.push_screen, DeviceSelector(devices, active_id))
+
+                def _on_device_selected(device_id):
+                    if device_id:
+                        # Find device name
+                        device_name = next(
+                            (d["name"] for d in devices if d["id"] == device_id), "Unknown"
+                        )
+                        app.store.set("preferred_device_name", device_name)
+
+                        def _transfer_worker():
+                            nw = Container.resolve(SpotifyNetwork)
+                            nw.transfer_playback(device_id)
+                            app.call_from_thread(app.notify, f"Switched to {device_name}")
+                            app.call_from_thread(app.update_now_playing, force=True)
+
+                        threading.Thread(target=_transfer_worker, daemon=True).start()
+
+                app.call_from_thread(
+                    app.push_screen, DeviceSelector(devices, active_id), _on_device_selected
+                )
+            else:
+                app.call_from_thread(app.notify, "No devices found", severity="warning")
 
         threading.Thread(target=_worker, daemon=True).start()
+
+
+class ShowAudioCommand(Command):
+    def execute(self, app, *args, **kwargs):
+        from src.ui.modals.audio_modals import AudioConfigSelector
+
+        prefs = Container.resolve(UserPreferences)
+
+        def _on_config_selected(config):
+            if config:
+                # Update preferences
+                prefs.audio_config.update(config)
+                app.notify(f"Audio backend set to: {config['backend']}")
+
+                # Restart player if running
+                player = Container.resolve(LocalPlayer)
+                nw = Container.resolve(SpotifyNetwork)
+                if player.is_running():
+                    token = nw.get_access_token()
+                    player.restart(access_token=token)
+
+        app.push_screen(AudioConfigSelector(prefs.audio_config), _on_config_selected)
 
 
 class CommandService:
@@ -176,6 +219,7 @@ class CommandService:
             ("cycle_repeat", CycleRepeatCommand()),
             ("recommendations", RecommendationsCommand()),
             ("show_device", ShowDeviceCommand()),
+            ("show_audio", ShowAudioCommand()),
             (
                 "refresh",
                 type("Refresh", (Command,), {"execute": lambda s, a, *args: a.refresh_data()})(),

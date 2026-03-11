@@ -9,6 +9,7 @@ import json
 from typing import Any, Optional, Callable
 import spotipy
 from spotipy.exceptions import SpotifyException
+from src.core.di import Container
 from src.core.logging_config import get_logger
 from src.core.debug_logger import DebugLogger
 from src.core.cache import CacheStore
@@ -95,6 +96,14 @@ class SpotifyServiceBase:
             duration_ms = (time.time() - start_time) * 1000
 
             # 3. Track success
+            try:
+                from src.state.store import Store
+                from src.core.di import Container as DIContainer
+
+                DIContainer.resolve(Store).set("api_connected", False)
+            except:
+                pass
+
             # Capture full response snippet for debugging
             try:
                 # Use a custom serializer for complex objects if needed
@@ -127,6 +136,13 @@ class SpotifyServiceBase:
             duration_ms = (time.time() - start_time) * 1000
             status_code = getattr(e, "http_status", None)
 
+            try:
+                from src.state.store import Store
+
+                Container.resolve(Store).set("api_connected", False)
+            except:
+                pass
+
             # Check if we should suppress the error log
             should_suppress = suppress_status_codes and status_code in suppress_status_codes
 
@@ -141,6 +157,14 @@ class SpotifyServiceBase:
             return default_return
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
+
+            try:
+                from src.state.store import Store
+
+                Container.resolve(Store).set("api_connected", False)
+            except:
+                pass
+
             error_msg = f"Unexpected error in API call ({endpoint}): {e}"
             logger.error(error_msg)
 

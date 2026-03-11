@@ -50,8 +50,11 @@ def setup_spotify():
         Container.register(DiscoveryService, lambda: network.discovery, singleton=True)
 
         if network.is_authenticated():
-            player = LocalPlayer()
-            Container.register(LocalPlayer, lambda: player, singleton=True)
+            try:
+                player = Container.resolve(LocalPlayer)
+            except:
+                player = LocalPlayer()
+                Container.register(LocalPlayer, lambda: player, singleton=True)
             return True
     except Exception as e:
         print(f"Spotify initialization error: {e}")
@@ -163,6 +166,21 @@ if __name__ == "__main__":
     app = TerminalRenderer()
     try:
         app.run()
+    except Exception as e:
+        print(f"\n[Error] Application crashed: {e}")
+        import traceback
+
+        traceback.print_exc()
     finally:
         if player:
-            player.stop()
+            try:
+                player.stop()
+            except KeyboardInterrupt:
+                # If they hit Ctrl+C again, just force exit without waiting
+                print("\n[Info] Forced exit...")
+                try:
+                    player.stop(wait=False)
+                except:
+                    pass
+            except Exception:
+                pass

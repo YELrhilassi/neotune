@@ -43,12 +43,31 @@ class TrackList(DataTable):
         self.cursor_type = "row"
         self.store = Container.resolve(Store)
 
-        self.store.subscribe("current_tracks", self.load_tracks)
+        self.store.subscribe("current_tracks", self.safe_load_tracks)
         self.store.subscribe("loading_states", self._handle_loading)
+
+    def safe_load_tracks(self, tracks: list):
+        """Thread-safe entry point for load_tracks."""
+        if not self.app:
+            return
+
+        import threading
+
+        if threading.current_thread() is threading.main_thread():
+            self.load_tracks(tracks)
+        else:
+            self.app.call_from_thread(self.load_tracks, tracks)
 
     def _handle_loading(self, states):
         if states:
-            self.loading = states.get("track_list", False)
+            loading = states.get("track_list", False)
+            if self.app:
+                import threading
+
+                if threading.current_thread() is threading.main_thread():
+                    self.loading = loading
+                else:
+                    self.app.call_from_thread(setattr, self, "loading", loading)
 
     def get_highlighted_track_data(self) -> Optional[dict]:
         """Return the data for the currently highlighted row."""

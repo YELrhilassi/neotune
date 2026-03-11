@@ -9,7 +9,6 @@ from src.network.spotify_network import SpotifyNetwork
 from src.core.utils import strip_icons
 from src.ui.components.content_tree.tree_nodes import (
     CollectionBranch,
-    MadeForYouBranch,
     PlaylistsBranch,
     DiscoveryBranch,
 )
@@ -43,20 +42,34 @@ class ContentTree(Tree):
         if states and self.app:
             new_loading = states.get("sidebar", False)
             if self.loading != new_loading:
-                self.loading = new_loading
+                import threading
+
+                if threading.current_thread() is threading.main_thread():
+                    self.loading = new_loading
+                else:
+                    self.app.call_from_thread(setattr, self, "loading", new_loading)
 
     def _reactive_refresh(self, data):
-        if not self.app:
+        app = self.app
+        if not app:
             return
         if self._refresh_timer:
             self._refresh_timer.cancel()
         import threading
 
         def _deferred():
-            if self.app:
-                self.app.call_from_thread(self.refresh_tree)
+            try:
+                # Use the captured app reference
+                import threading
 
-        self._refresh_timer = threading.Timer(1.5, _deferred)
+                if threading.current_thread() is threading.main_thread():
+                    self.refresh_tree()
+                else:
+                    app.call_from_thread(self.refresh_tree)
+            except Exception:
+                pass
+
+        self._refresh_timer = threading.Timer(2.0, _deferred)
         self._refresh_timer.daemon = True
         self._refresh_timer.start()
 
@@ -73,7 +86,6 @@ class ContentTree(Tree):
 
             self.clear()
             CollectionBranch(self.root, self.store).build()
-            MadeForYouBranch(self.root, self.store).build()
             PlaylistsBranch(self.root, self.store).build()
             DiscoveryBranch(self.root, self.store).build()
 
@@ -103,11 +115,6 @@ class ContentTree(Tree):
                 node.expand()
         for child in node.children:
             self._restore_expansion(child, expanded_ids)
-
-    def _handle_last_active(self, node_id):
-        if not node_id:
-            return
-        self._select_node_by_id(self.root, node_id)
 
     def _select_node_by_id(self, node: TreeNode, node_id: str) -> bool:
         if node.data and node.data.get("id") == node_id:
@@ -152,6 +159,8 @@ class ContentTree(Tree):
         try:
             self.app.call_from_thread(lambda: node.add_leaf("Loading...", data={"type": "loading"}))
             self.app.call_from_thread(node.expand)
+
+            # Resolve via category endpoint with robust search fallback
             playlists = self.network.discovery.get_category_playlists(
                 category_id, name_hint=category_name
             )
@@ -159,17 +168,8 @@ class ContentTree(Tree):
             def _update_ui():
                 node.remove_children()
                 if not playlists:
-                    node_id = str(node.data.get("id", "")) if node.data else ""
-                    is_personal = node_id.startswith("0JQ") or "mix" in category_name.lower()
-                    if is_personal:
-                        node.add_leaf("[dim]Unavailable right now[/]", data={"type": "info"})
-                    else:
-                        try:
-                            node.remove()
-                        except:
-                            pass
+                    node.add_leaf("[dim]No playlists found[/]", data={"type": "info"})
                     return
-
                 for pl in playlists:
                     if pl and isinstance(pl, dict):
                         node.add_leaf(
@@ -193,10 +193,7 @@ class ContentTree(Tree):
             combined = []
             seen_uris = set()
 
-            profile = self.network.library.get_user_profile()
-            country = profile.get("country") if profile else None
-
-            # 1. Lua Special Playlists
+            # 1. Lua Config Special Playlists
             from src.config.user_prefs import UserPreferences
 
             try:
@@ -219,9 +216,11 @@ class ContentTree(Tree):
             except:
                 pass
 
-            # 2. Spotify Search Fallback for 'Made For You'
-            mfy_playlists = self.network.discovery.get_made_for_you_playlists(country=country)
+            # 2. Spotify 'Made For You' search
+            mfy_playlists = self.network.discovery.get_made_for_you_playlists()
             for pl in mfy_playlists:
+                if not pl:
+                    continue
                 uri = pl.get("uri")
                 if uri and uri not in seen_uris:
                     combined.append(
@@ -230,40 +229,10 @@ class ContentTree(Tree):
                             "context_type": "playlist",
                             "uri": uri,
                             "name": pl.get("name", "Mix"),
-                            "metadata": {
-                                "artists": f"by {pl.get('owner', {}).get('display_name', 'Spotify')}"
-                            },
+                            "metadata": {"artists": "Spotify Mix"},
                         }
                     )
                     seen_uris.add(uri)
-
-            # 3. Personalized Category Extraction
-            metadata = self.store.get("browse_metadata") or {}
-            categories = metadata.get("categories", [])
-            for cat in categories:
-                name_lower = cat.get("name", "").lower()
-                cat_id = cat.get("id")
-                is_algo = any(
-                    t in name_lower
-                    for t in ["made for you", "daily mix", "discover weekly", "radar", "mix", "dj"]
-                )
-                if is_algo or str(cat_id).startswith("0JQ5D"):
-                    pls = self.network.discovery.get_category_playlists(
-                        cat_id, country=country, name_hint=cat.get("name")
-                    )
-                    for p in pls:
-                        uri = p.get("uri")
-                        if uri and uri not in seen_uris:
-                            combined.append(
-                                {
-                                    "type": "context",
-                                    "context_type": "playlist",
-                                    "uri": uri,
-                                    "name": p.get("name", "Mix"),
-                                    "metadata": {"artists": "Spotify Mix"},
-                                }
-                            )
-                            seen_uris.add(uri)
 
             self.app.call_from_thread(self.store.set, "current_tracks", combined)
             self.app.call_from_thread(
@@ -287,15 +256,15 @@ class ContentTree(Tree):
             items = featured.get("items", [])
             tracks = []
             for pl in items:
+                if not pl:
+                    continue
                 tracks.append(
                     {
                         "type": "context",
                         "context_type": "playlist",
                         "uri": pl.get("uri"),
                         "name": pl.get("name"),
-                        "metadata": {
-                            "artists": f"by {pl.get('owner', {}).get('display_name', 'Spotify')}"
-                        },
+                        "metadata": {"artists": "Spotify Pick"},
                     }
                 )
             self.app.call_from_thread(self.store.set, "current_tracks", tracks)

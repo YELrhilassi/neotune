@@ -11,7 +11,6 @@ class Store:
     """
 
     def __init__(self):
-
         self.config_dir = Path.home() / ".config" / "spotify-tui"
         self.state_file = self.config_dir / "state.json"
 
@@ -24,6 +23,7 @@ class Store:
             "devices": [],
             "preferred_device_id": None,
             "is_authenticated": False,
+            "api_connected": False,
             "auth_error": None,
             "last_active_context": None,  # spotify:playlist:xxxx or spotify:album:xxxx
             "last_active_node_id": None,

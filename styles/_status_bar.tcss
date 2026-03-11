@@ -1,61 +1,83 @@
 #status-bar {
     height: 1;
     dock: bottom;
-    background: $background;
-    color: $text;
+    background: #181825; /* surface/mantle */
+    color: #cdd6f4; /* text */
     padding: 0;
 }
 
 #status-container {
     layout: horizontal;
     width: 100%;
+    height: 1;
 }
 
-#status-mode {
-    color: $surface;
-    text-style: bold;
-    padding: 0 1;
-}
-
-#status-mode.normal { background: $primary; }
-#status-mode.leader { background: $warning; }
-#status-mode.search { background: $success; }
-
-#status-mode-sep {
-    background: $accent;
-}
-
-#status-mode-sep.normal { color: $primary; }
-#status-mode-sep.leader { color: $warning; }
-#status-mode-sep.search { color: $success; }
-
-#status-left {
-    background: $accent;
-    color: $surface;
+#status-left-group, #status-right-group {
     width: auto;
-    text-style: bold;
-    padding: 0 1;
-}
-
-#status-left-sep {
-    background: $surface;
-    color: $accent;
+    height: 1;
+    layout: horizontal;
 }
 
 #status-middle {
-    background: $surface;
     width: 1fr;
+    height: 1;
+    background: #181825;
 }
 
-#status-right-sep {
-    background: $surface;
-    color: $primary;
-}
-
-#status-right {
-    background: $primary;
-    color: $surface;
-    width: auto;
+/* Base styling for labels */
+#status-mode, #status-device, #status-quality, #status-connection {
+    height: 1;
+    content-align: center middle;
     text-style: bold;
     padding: 0 1;
 }
+
+/* Mode Segment (Leftmost) */
+#status-mode { color: #181825; }
+#status-mode.normal { background: #89b4fa; }
+#status-mode.leader { background: #fab387; }
+#status-mode.search { background: #a6e3a1; }
+
+#status-mode-sep { background: #313244; }
+#status-mode-sep.normal { color: #89b4fa; }
+#status-mode-sep.leader { color: #fab387; }
+#status-mode-sep.search { color: #a6e3a1; }
+
+/* Device Segment */
+#status-device {
+    background: #313244; /* panel */
+    color: #cdd6f4;
+}
+
+#status-device-sep {
+    background: #181825;
+    color: #313244;
+}
+
+/* --- Right Side --- */
+
+/* Separator between Middle and Quality */
+#status-quality-sep {
+    background: #181825;
+    color: #313244;
+}
+
+/* Quality Segment */
+#status-quality {
+    background: #313244;
+    color: #cdd6f4;
+}
+
+/* Separator between Quality and Connection */
+#status-connection-sep {
+    background: #313244;
+}
+#status-connection-sep.connected { color: #a6e3a1; }
+#status-connection-sep.disconnected { color: #f38ba8; }
+
+/* Connection Segment (Rightmost) */
+#status-connection {
+    color: #181825;
+}
+#status-connection.connected { background: #a6e3a1; }
+#status-connection.disconnected { background: #f38ba8; }
