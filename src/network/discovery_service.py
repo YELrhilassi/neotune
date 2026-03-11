@@ -85,7 +85,7 @@ class DiscoveryService(SpotifyServiceBase):
         return items
 
     def get_category_playlists(
-        self, category_id: str, country: Optional[str] = None
+        self, category_id: str, country: Optional[str] = None, name_hint: str = ""
     ) -> list[dict[str, Any]]:
         """Fetch playlists for a category with robust fallbacks and 404 handling."""
         if not self.sp:
@@ -101,121 +101,162 @@ class DiscoveryService(SpotifyServiceBase):
                 **params,
                 track_name=name,
                 cache_ttl=1800,
-                min_interval=10.0,
-                suppress_status_codes=[404],
+                min_interval=5.0,
+                suppress_status_codes=[404, 400],
             )
             if res and res.get("playlists", {}).get("items"):
                 items = [p for p in res["playlists"]["items"] if p]
                 if items:
                     return items
 
-        # 2. Search fallback
+        # 2. Search Fallback (personalized mixes)
         query = CategoryMappings.QUERY_MAP.get(category_id)
+        if not query and (category_id.startswith("0JQ") or "mix" in name_hint.lower()):
+            from src.core.utils import strip_icons
+
+            clean_name = strip_icons(name_hint)
+            if len(clean_name) > 2:
+                query = f"{clean_name} owner:spotify"
+
         if query:
             res = self._safe_api_call(
                 self.sp.search,
                 q=query,
                 type="playlist",
+                limit=10,
                 track_name="cat_search_fallback",
                 cache_ttl=1800,
             )
-            return res.get("playlists", {}).get("items", []) if res else []
+            if res and res.get("playlists"):
+                return [p for p in res["playlists"].get("items", []) if p]
 
         return []
 
     def get_made_for_you_playlists(self, country: Optional[str] = None) -> list[dict[str, Any]]:
         """
         Discover 'Made For You' playlists by searching for standard names.
-        Filters results to ensure they are owned by Spotify.
         """
         if not self.sp:
             return []
 
         search_terms = [
+            "Made For You",
+            "Daily Mix",
             "Discover Weekly",
             "Release Radar",
             "On Repeat",
-            "Repeat Rewind",
-            "Daily Drive",
-            "Daily Mix 1",
-            "Daily Mix 2",
-            "Daily Mix 3",
-            "Daily Mix 4",
-            "Daily Mix 5",
-            "Daily Mix 6",
         ]
-
         found_playlists = []
+        seen_uris = set()
+
         for term in search_terms:
             result = self._safe_api_call(
-                self.sp.search,
-                q=term,
-                type="playlist",
-                limit=1,
-                track_name=f"search_mfy_{term.lower().replace(' ', '_')}",
-                cache_ttl=3600,
+                self.sp.search, q=term, type="playlist", limit=5, track_name="search_mfy"
             )
-
             if result and result.get("playlists"):
-                items = result["playlists"].get("items", [])
-                for pl in items:
+                for pl in result["playlists"].get("items", []):
                     if not pl:
                         continue
-                    owner_id = pl.get("owner", {}).get("id")
-                    if owner_id == "spotify":
+                    uri = pl.get("uri")
+                    # Owner 'spotify' filter is standard for official mixes
+                    if pl.get("owner", {}).get("id") == "spotify" and uri not in seen_uris:
                         found_playlists.append(pl)
-                        break
-
+                        seen_uris.add(uri)
         return found_playlists
 
     def get_recommendations(
         self,
         seed_tracks: Optional[list[str]] = None,
         seed_artists: Optional[list[str]] = None,
+        seed_genres: Optional[list[str]] = None,
         limit: int = 50,
+        market: Optional[str] = None,
+        **tunables,
     ) -> list[dict[str, Any]]:
-        """Fetch recommendations based on seeds (reconstructs 'Radio')."""
-        # Ensure we have at least one seed
-        if not self.sp or (not seed_tracks and not seed_artists):
+        """Fetch recommendations with local radio fallback."""
+        if not self.sp:
             return []
 
-        result = self._safe_api_call(
-            self.sp.recommendations,
-            seed_tracks=seed_tracks,
-            seed_artists=seed_artists,
-            limit=limit,
-            track_name="recommendations",
-            cache_ttl=300,
-        )
-        return result.get("tracks", []) if result else []
+        # 1. Attempt official endpoint
+        if any([seed_tracks, seed_artists, seed_genres]):
+            params = {
+                "seed_tracks": seed_tracks[:5] if seed_tracks else None,
+                "seed_artists": seed_artists[:5] if seed_artists else None,
+                "seed_genres": seed_genres[:5] if seed_genres else None,
+                "limit": limit,
+                "market": market,
+            }
+            for k, v in tunables.items():
+                if v is not None:
+                    params[k] = v
+
+            res = self._safe_api_call(
+                self.sp.recommendations,
+                track_name="recommendations",
+                suppress_status_codes=[404, 403],
+                **params,
+            )
+            if res and res.get("tracks"):
+                return res["tracks"]
+
+        # 2. Local reconstruction (Radio)
+        artist_id = None
+        if seed_artists:
+            artist_id = seed_artists[0]
+        elif seed_tracks:
+            track = self._safe_api_call(self.sp.track, seed_tracks[0])
+            if track and track.get("artists"):
+                artist_id = track["artists"][0].get("id")
+
+        if artist_id:
+            # Related artists top tracks
+            related = self._safe_api_call(self.sp.artist_related_artists, artist_id)
+            if related and related.get("artists"):
+                import random
+
+                tracks = []
+                artists = related["artists"]
+                random.shuffle(artists)
+                for a in artists[:10]:
+                    top = self._safe_api_call(
+                        self.sp.artist_top_tracks, a["id"], country=market or "US"
+                    )
+                    if top and top.get("tracks"):
+                        tracks.extend(top["tracks"][:3])
+                    if len(tracks) >= limit:
+                        break
+                return tracks[:limit]
+
+        return []
 
     def resolve_special_context(self, uri: str) -> list[str]:
-        """Try to resolve a non-standard URI into a list of playable track URIs."""
+        """Resolve Stations or Ghost Playlists."""
         if not uri or not self.sp:
             return []
 
-        # 1. Handle Stations (Radio)
         if ":station:" in uri:
             parts = uri.split(":")
             seed_id = parts[-1]
             if "track" in parts:
-                tracks = self.get_recommendations(seed_tracks=[seed_id])
+                return [
+                    t["uri"]
+                    for t in self.get_recommendations(seed_tracks=[seed_id])
+                    if t.get("uri")
+                ]
             elif "artist" in parts:
-                tracks = self.get_recommendations(seed_artists=[seed_id])
-            else:
-                return []
-            return [t["uri"] for t in tracks if t.get("uri")]
+                return [
+                    t["uri"]
+                    for t in self.get_recommendations(seed_artists=[seed_id])
+                    if t.get("uri")
+                ]
 
-        # 2. Handle "Ghost" Playlists (Daily Mixes, Discover Weekly)
         if ":playlist:" in uri:
-            playlist_id = uri.split(":")[-1]
             try:
                 res = self._safe_api_call(
                     self.sp.playlist_items,
-                    playlist_id,
+                    uri.split(":")[-1],
                     limit=100,
-                    track_name="resolve_ghost_items",
-                    suppress_status_codes=[404, 403],
+                    suppress_status_codes=[404],
                 )
                 if res and res.get("items"):
                     return [
@@ -225,5 +266,4 @@ class DiscoveryService(SpotifyServiceBase):
                     ]
             except:
                 pass
-
         return []

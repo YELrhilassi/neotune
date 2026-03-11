@@ -73,9 +73,7 @@ class DebugModal(BaseModal):
     def _on_new_log_entry(self, entry: LogEntry) -> None:
         if not self.is_mounted:
             return
-        # Delegate to logs tab if active
         if self.query_one("#debug-tabs", TabbedContent).active == "tab-logs":
-            # Real-time append to RichLog instead of full refresh
             try:
                 if self.log_level_filter != "all" and entry.level.value != self.log_level_filter:
                     return
@@ -106,7 +104,6 @@ class DebugModal(BaseModal):
         if not bid:
             return
 
-        # Handle Global/Shared buttons
         if bid == "btn-refresh":
             self.action_refresh_current_tab()
         elif bid == "btn-clear-logs":
@@ -115,8 +112,9 @@ class DebugModal(BaseModal):
         elif bid == "btn-clear-network":
             self.debug_svc.clear_network_history()
             self.action_refresh_current_tab()
-
-        # Handle Copy buttons
+        elif bid == "btn-clear-app-cache":
+            self._clear_app_cache()
+            self.action_refresh_current_tab()
         elif bid == "btn-copy-all-logs":
             self._copy_all_logs()
         elif bid == "btn-copy-network-list":
@@ -127,8 +125,6 @@ class DebugModal(BaseModal):
             self._copy_perf_stats()
         elif bid == "btn-copy-player-logs":
             self._copy_player_logs()
-
-        # Handle Filters
         elif bid.startswith("filter-"):
             for b in self.query(".filter-btn"):
                 b.remove_class("active")
@@ -138,6 +134,24 @@ class DebugModal(BaseModal):
 
             self.query_one("#view-logs", LogsTab).refresh_data()
 
+    def _clear_app_cache(self) -> None:
+        """Clear the activity and general cache files."""
+        try:
+            from src.core.activity_service import ActivityService
+
+            activity = Container.resolve(ActivityService)
+            activity._cache.clear()
+
+            from src.core.cache import CacheStore
+
+            cache = Container.resolve(CacheStore)
+            cache.clear()
+
+            self.app.notify("All application caches cleared.")
+            self.debug_svc.info("Debugger", "Manual cache cleanup performed")
+        except Exception as e:
+            self.app.notify(f"Cache clear failed: {e}", severity="error")
+
     @on(OptionList.OptionHighlighted, "#network-history-list")
     def on_network_item_selected(self, event: OptionList.OptionHighlighted) -> None:
         self.selected_network_index = event.option_index
@@ -145,12 +159,10 @@ class DebugModal(BaseModal):
 
     def _update_detail_by_index(self, index: int) -> None:
         reqs = self.debug_svc.get_network_history(limit=50)
-        # Options are in reverse order
         if reqs and index < len(reqs):
             req = list(reversed(reqs))[index]
             pane = self.query_one("#network-details", Static)
             sc = "#a6e3a1" if (req.status_code or 200) < 400 else "#f38ba8"
-
             ts = datetime.fromtimestamp(req.timestamp).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
             details = [
@@ -169,7 +181,6 @@ class DebugModal(BaseModal):
 
             details.append(f"\n[bold #cba6f7]Request Parameters[/]")
             try:
-                # Capture params accurately
                 params_str = json.dumps(req.params, indent=2, default=str)
                 details.append(f"[dim]{params_str}[/]")
             except:
@@ -188,7 +199,6 @@ class DebugModal(BaseModal):
 
             formatted_text = "\n".join(details)
             pane.update(formatted_text)
-            # Store formatted text for copying
             self._last_formatted_details = formatted_text
 
     # --- Copy Logic ---
@@ -208,9 +218,7 @@ class DebugModal(BaseModal):
         if hasattr(self, "_last_formatted_details") and self._last_formatted_details:
             from rich.text import Text
 
-            # Strip markup before copying
-            clean_text = Text.from_markup(self._last_formatted_details).plain
-            self.app.copy_to_clipboard(clean_text)
+            self.app.copy_to_clipboard(Text.from_markup(self._last_formatted_details).plain)
         else:
             self.app.notify("No details selected to copy", severity="warning")
 
@@ -289,7 +297,7 @@ class DebugModal(BaseModal):
             from src.ui.modals.debug.tabs import BaseDebugTab
 
             view = self.query_one(view_id)
-            if hasattr(view, "refresh_data"):
+            if isinstance(view, BaseDebugTab):
                 view.refresh_data()
 
     def action_yank_selected(self) -> None:

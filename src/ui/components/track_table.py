@@ -115,8 +115,9 @@ class TrackList(DataTable):
             unique_key = f"{t_uri}_{uuid.uuid4().hex[:8]}"
             self.track_data_map[unique_key] = track
 
+            # Add track row with icon
             self.add_row(
-                strip_icons(track["name"]),
+                f"{Icons.TRACK} {strip_icons(track['name'])}",
                 artists,
                 strip_icons(track.get("album", {}).get("name", "Unknown")),
                 duration_str,

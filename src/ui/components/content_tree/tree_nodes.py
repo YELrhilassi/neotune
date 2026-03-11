@@ -18,27 +18,33 @@ class BaseBranch:
 
 
 class CollectionBranch(BaseBranch):
-    """Handles the user's primary collection entries."""
+    """Handles the user's primary collection entries (Made For You, Liked, Recent)."""
 
     def build(self):
-        # We don't use a root group for these, they stay at the very top
+        # 1. Made For You (Leaf - At the very top)
+        self.root.add_leaf(
+            f"{Icons.HEART} Made For You",
+            data={"type": "made_for_you", "id": "made_for_you_leaf"},
+        )
+
+        # 2. Liked Songs (Leaf)
         self.root.add_leaf(
             f"{Icons.SAVE} Liked Songs",
-            data={"type": "liked_songs", "id": "liked_songs"},
+            data={"type": "liked_songs", "id": "liked_songs_leaf"},
         )
+
+        # 3. Recently Played (Leaf)
         self.root.add_leaf(
             f"{Icons.HISTORY} Recently Played",
-            data={"type": "recently_played", "id": "recently_played"},
+            data={"type": "recently_played", "id": "recently_played_leaf"},
         )
 
 
 class PlaylistsBranch(BaseBranch):
-    """Handles the user's personal playlists under 'Your Playlists'."""
+    """Handles the user's personal playlists group."""
 
     def build(self):
         playlists = self.store.get("playlists") or []
-        if not playlists:
-            return
 
         pl_root = self.root.add(
             f"{Icons.PLAYLIST} Your Playlists",
@@ -46,13 +52,14 @@ class PlaylistsBranch(BaseBranch):
             data={"type": "group", "id": "your_playlists_group"},
         )
 
+        if not playlists:
+            return
+
         seen_names: Dict[str, int] = {}
         for pl in playlists:
-            if not pl or not isinstance(pl, dict):
+            if not isinstance(pl, dict):
                 continue
-
-            name = strip_icons(pl.get("name", "")) or "Untitled Playlist"
-
+            name = strip_icons(pl.get("name", "")) or "Untitled"
             if name in seen_names:
                 seen_names[name] += 1
                 display_name = f"{name} ({seen_names[name]})"
@@ -64,52 +71,42 @@ class PlaylistsBranch(BaseBranch):
 
 
 class DiscoveryBranch(BaseBranch):
-    """Handles the unified Discovery section (Made For You, Featured, Browse)."""
+    """Handles the unified Discovery section."""
 
     def build(self):
         metadata = self.store.get("browse_metadata") or {}
         categories = metadata.get("categories", [])
-        featured_playlists = metadata.get("featured_playlists", [])
-        user_profile = metadata.get("user_profile")
-        username = user_profile.get("display_name", "You") if user_profile else "You"
 
-        # 1. Made For You (Personalized Leaf)
-        self.root.add_leaf(
-            f"{Icons.HEART} Made For {username}",
-            data={"type": "made_for_you", "id": "made_for_you"},
+        # Discovery Group
+        disc_root = self.root.add(
+            f"{Icons.SEARCH} Discovery",
+            expand=True,
+            data={"type": "group", "id": "discovery_group"},
         )
 
-        # 2. Featured (Curated Group)
-        ft_root = self.root.add(
+        # 1. Featured (Leaf)
+        disc_root.add_leaf(
             f"{Icons.FEATURED} Featured",
-            expand=False,
-            data={"type": "group", "id": "featured_group"},
+            data={"type": "featured_hub", "id": "featured_leaf"},
         )
-        for pl in featured_playlists:
-            if pl and isinstance(pl, dict):
-                ft_root.add_leaf(
-                    strip_icons(pl.get("name", "Playlist")),
-                    data={"type": "playlist", "id": pl.get("id")},
-                )
 
-        # 3. Browse (Categories Group)
-        br_root = self.root.add(
-            f"{Icons.SEARCH} Browse All",
+        # 2. Categories (Group)
+        cat_root = disc_root.add(
+            f"{Icons.TELESCOPE} Browse All",
             expand=False,
             data={"type": "group", "id": "browse_all_group"},
         )
 
         for cat in categories:
-            if not cat or not isinstance(cat, dict):
+            if not isinstance(cat, dict):
                 continue
-            cat_id = cat.get("id", "")
-            cat_name = cat.get("name", "")
+            cat_id = cat.get("id")
+            cat_name = cat.get("name")
             if not cat_id or not cat_name:
                 continue
 
             name_lower = cat_name.lower()
-            # 1. Skip categories that are clearly personalized/algorithmic
-            # These include common personalized IDs and names
+            # Sort into 'Personalized' if algorithmic, but user wants 'Browse All' as a group
             is_algorithmic = any(
                 term in name_lower
                 for term in [
@@ -119,33 +116,20 @@ class DiscoveryBranch(BaseBranch):
                     "release radar",
                     "mix",
                     "dj",
-                    "your top",
-                    "wrapped",
                 ]
             )
 
-            # Regional personalized IDs often start with 0JQ5D
-            if is_algorithmic or cat_id == "made-for-you" or cat_id.startswith("0JQ5D"):
+            # Filter algorithmic from 'Browse All' as they go to 'Made For You' leaf
+            if is_algorithmic or cat_id == "made-for-you" or str(cat_id).startswith("0JQ5D"):
                 continue
 
-            # 2. Add regular category to Browse All
-            br_root.add(
+            cat_root.add(
                 strip_icons(cat_name),
                 data={"type": "category_root", "id": cat_id},
             )
 
-            if is_algorithmic or cat_id == "made-for-you":
-                continue
-
-            br_root.add(
-                strip_icons(cat_name),
-                data={"type": "category_root", "id": cat_id},
-            )
-
-        # Cleanup: remove groups only if they are completely empty
-        for node in [ft_root, br_root]:
-            if not node.children:
-                try:
-                    node.remove()
-                except:
-                    pass
+        if not cat_root.children:
+            try:
+                cat_root.remove()
+            except:
+                pass

@@ -201,6 +201,7 @@ class SettingsTab(BaseDebugTab):
         with Horizontal(id="settings-buttons"):
             yield Button("Clear All Logs", id="btn-clear-logs", variant="error")
             yield Button("Clear Network History", id="btn-clear-network", variant="error")
+            yield Button("Clear App Cache", id="btn-clear-app-cache", variant="error")
             yield Button("Refresh Data", id="btn-refresh", variant="primary")
         yield Static("", id="settings-info")
 
