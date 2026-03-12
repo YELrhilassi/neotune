@@ -65,12 +65,13 @@ neotune.map("Q", "logout", "Logout (Clear session)")
 ```
 
 Additional actions available for mapping:
+- `fuzzy_search`: Open the Fuzzy Finder for local Tracks/Playlists
 - `toggle_shuffle`: Toggle playback shuffle
 - `cycle_repeat`: Cycle through repeat modes
 - `toggle_sidebar`: Toggle the visibility of the sidebar
 - `theme_selector`: Open the visual theme selector
 - `command_prompt`: Open the command bar (`:`)
-- `search_prompt`: Open the Telescope search bar (`/`)
+- `search_prompt`: Open the Telescope global search bar (`/`)
 - `show_device`: Open the device selector
 - `show_audio`: Open the audio backend configuration
 - `refresh`: Manually refresh all library data

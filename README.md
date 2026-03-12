@@ -5,10 +5,12 @@ A sleek, Neovim-inspired Spotify client for the terminal, built with Python and 
 ## Features
 
 - **Neovim-style Workflow**: Uses a leader key (default: `space`) for actions, featuring `NORMAL`, `LEADER`, and `SEARCH` modes.
+- **NeoTune Fuzzy Finder**: A powerful fuzzy search interface (`space` + `s`) allowing you to instantly jump to specific tracks inside your personal playlists and Spotify's official playlists, or rapidly explore global content (`/`).
+- **Background Prefetching & Caching**: Playlists and their tracks are silently indexed and cached to disk on launch, giving you instantaneous access with zero API lag.
+- **Smart Track Table**: The UI dynamically calculates responsive and proportional column sizes matching your terminal window, gracefully truncating long text.
 - **Improved Browser Setup**: No more copy-pasting redirect URLs. Launch the app, visit `http://127.0.0.1:8080`, and the app handles the rest.
-- **Direct Playback**: Built-in `librespot` support. The app automatically compiles and manages its own playback engine.
-- **Advanced Telescope Search**: A powerful search interface for Tracks, Albums, and Playlists with interactive previews.
-- **Lua Configuration**: Fully customizable through Lua scripts. Define your own keymaps and themes.
+- **Direct Playback**: Built-in `librespot` support. The app automatically compiles and manages its own playback engine for premium gapless audio.
+- **Lua Configuration**: Fully customizable through Lua scripts. Define your own keymaps and themes with automatic fallback to internal defaults.
 
 ## Installation
 
@@ -61,6 +63,8 @@ A sleek, Neovim-inspired Spotify client for the terminal, built with Python and 
 - `p`: Play / Pause
 - `n`: Next track
 - `b`: Previous track
+- `s`: **Fuzzy Find App Content** (Tracks & Playlists)
+- `/`: Global Telescope Search
 - `t`: Theme selector
 - `Q`: Logout (Wipe session and credentials)
 - `:`: Open command prompt
