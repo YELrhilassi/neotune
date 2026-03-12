@@ -1,4 +1,4 @@
-# Spotify TUI
+# NeoTune
 
 A sleek, Neovim-inspired Spotify client for the terminal, built with Python and [Textual](https://textual.textualize.io/). 
 
@@ -22,8 +22,8 @@ A sleek, Neovim-inspired Spotify client for the terminal, built with Python and 
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/spotify-tui.git
-   cd spotify-tui
+   git clone https://github.com/yourusername/neotune.git
+   cd neotune
    ```
 
 2. Create a virtual environment and install dependencies:

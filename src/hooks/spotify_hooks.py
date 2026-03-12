@@ -18,7 +18,7 @@ def useEnsureActiveDevice(app):
 
 def useSwitchToLocalPlayer(app, force=False):
     """
-    Switches playback to the local "Spotify TUI Player" or the first available device.
+    Switches playback to the local "NeoTune Player" or the first available device.
     """
     try:
         network = Container.resolve(SpotifyNetwork)
@@ -33,7 +33,7 @@ def useSwitchToLocalPlayer(app, force=False):
             return
             
         for device in devices_data['devices']:
-            if device['name'] == "Spotify TUI Player":
+            if device['name'] == "NeoTune Player":
                 store.set("preferred_device_id", device['id'])
                 store.set("preferred_device_name", device['name'])
                 network.transfer_playback(device['id'], force_play=False)

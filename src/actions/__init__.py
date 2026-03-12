@@ -1,4 +1,4 @@
-"""Actions module for Spotify TUI.
+"""Actions module for NeoTune.
 
 This module contains action functions that replace the old hooks pattern.
 Actions are plain functions that perform operations and can be called from

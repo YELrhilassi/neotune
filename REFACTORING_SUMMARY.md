@@ -1,4 +1,4 @@
-# Spotify TUI Comprehensive Refactoring Summary
+# NeoTune Comprehensive Refactoring Summary
 
 This document summarizes all the changes made during the comprehensive code review and refactoring.
 
@@ -111,7 +111,7 @@ Updated the following files to use constants instead of hardcoded values:
 ## 📁 New File Structure
 
 ```
-spotify-tui/
+neotune/
 ├── pyproject.toml              # Project configuration with dev tools
 ├── src/
 │   ├── actions/                # NEW: Replaced hooks pattern

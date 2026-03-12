@@ -3,12 +3,12 @@
 -- Uncomment and modify the settings below to enable debugging
 
 --[[
-spotify_tui.set_debug({
+neotune.set_debug({
     enabled = true,                    -- Enable debug logging
     network_tracking = true,           -- Track network requests
     performance_tracking = true,       -- Track performance metrics
     log_to_file = false,             -- Write logs to file (optional)
-    log_file_path = "~/.config/spotify-tui/debug.log",
+    log_file_path = "~/.config/neotune/debug.log",
     max_log_entries = 1000,          -- Max log entries in memory
     max_network_history = 100,       -- Max network requests to track
     log_level = "info",              -- Minimum log level: debug, info, warning, error

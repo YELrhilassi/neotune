@@ -1,10 +1,13 @@
+from pathlib import Path
 import os
 import lupa
 from lupa import LuaRuntime
 
 
 class UserPreferences:
-    def __init__(self, config_dir="lua"):
+    def __init__(self, config_dir=None):
+        if config_dir is None:
+            config_dir = os.path.join(Path.home(), ".config", "neotune")
         self.config_dir = os.path.abspath(config_dir)
         self.lua = LuaRuntime(unpack_returned_tuples=True)
 
@@ -52,76 +55,117 @@ class UserPreferences:
     def _expose_api(self):
         # Expose a global api to lua to register configurations
         setup_lua = """
-        spotify_tui = {}
-        spotify_tui.keymaps = {}
-        spotify_tui.commands = {}
-        spotify_tui.audio = {}
-        spotify_tui.special_playlists = {}
+        neotune = {}
+        neotune.keymaps = {}
+        neotune.commands = {}
+        neotune.audio = {}
+        neotune.special_playlists = {}
         
-        function spotify_tui.set_leader(key)
-            spotify_tui.leader = key
+        function neotune.set_leader(key)
+            neotune.leader = key
         end
         
-        function spotify_tui.set_which_key(show)
-            spotify_tui.show_which_key = show
+        function neotune.set_which_key(show)
+            neotune.show_which_key = show
         end
         
-        function spotify_tui.set_auto_play(enabled)
-            spotify_tui.auto_play = enabled
+        function neotune.set_auto_play(enabled)
+            neotune.auto_play = enabled
         end
         
-        function spotify_tui.set_auto_select_device(enabled)
-            spotify_tui.auto_select_device = enabled
+        function neotune.set_auto_select_device(enabled)
+            neotune.auto_select_device = enabled
         end
         
-        function spotify_tui.map(key, action, desc)
-            spotify_tui.keymaps[key] = { action = action, desc = desc }
+        function neotune.map(key, action, desc)
+            neotune.keymaps[key] = { action = action, desc = desc }
         end
         
-        function spotify_tui.command(alias, action, desc)
-            spotify_tui.commands[alias] = { action = action, desc = desc }
+        function neotune.command(alias, action, desc)
+            neotune.commands[alias] = { action = action, desc = desc }
         end
         
-        function spotify_tui.set_nav(up, down, left, right, page_up, page_down)
-            spotify_tui.nav = { up = up, down = down, left = left, right = right, page_up = page_up, page_down = page_down }
+        function neotune.set_nav(up, down, left, right, page_up, page_down)
+            neotune.nav = { up = up, down = down, left = left, right = right, page_up = page_up, page_down = page_down }
         end
         
-        function spotify_tui.set_audio(backend, device, bitrate)
-            spotify_tui.audio.backend = backend
-            spotify_tui.audio.device = device
-            spotify_tui.audio.bitrate = tostring(bitrate)
+        function neotune.set_audio(backend, device, bitrate)
+            neotune.audio.backend = backend
+            neotune.audio.device = device
+            neotune.audio.bitrate = tostring(bitrate)
         end
         
-        function spotify_tui.set_theme(theme, vars)
-            spotify_tui.theme = theme
+        function neotune.set_theme(theme, vars)
+            neotune.theme = theme
             if vars then
-                spotify_tui.theme_vars = vars
+                neotune.theme_vars = vars
             end
         end
         
-        function spotify_tui.set_debug(config)
-            spotify_tui.debug = config
+        function neotune.set_debug(config)
+            neotune.debug = config
         end
         """
         self.lua.execute(setup_lua)
 
     def load(self):
-        # Ensure theme.lua exists
-        theme_file = os.path.join(self.config_dir, "theme.lua")
-        if not os.path.exists(theme_file):
-            with open(theme_file, "w") as f:
-                f.write('spotify_tui.set_theme("default")\n')
+        # Ensure config dir exists
+        os.makedirs(self.config_dir, exist_ok=True)
+        
+        # Internal lua files path
+        internal_lua_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "lua")
+        
+        # Always run the internal init first as base
+        internal_init = os.path.join(internal_lua_dir, "init.lua")
+        
+        # We need to tell lupa where to find the require files. 
+        # By default lupa uses package.path
+        setup_paths_lua = f"""
+        package.path = "{internal_lua_dir}/?.lua;" .. package.path
+        """
+        self.lua.execute(setup_paths_lua)
+        
+        if os.path.exists(internal_init):
+            try:
+                self.lua.require("init")
+            except Exception as e:
+                import logging
+                logging.getLogger("neotune").error(f"Failed to load internal config: {e}")
 
-        init_file = os.path.join(self.config_dir, "init.lua")
-        if not os.path.exists(init_file):
-            return
+        # Then let user override with their own init.lua if it exists
+        user_init = os.path.join(self.config_dir, "init.lua")
+        
+        if os.path.exists(user_init):
+            setup_user_paths = f"""
+            package.path = "{self.config_dir}/?.lua;" .. package.path
+            """
+            self.lua.execute(setup_user_paths)
+            
+            try:
+                # Use dofile to execute the exact user init.lua without caching conflicts
+                self.lua.execute(f'dofile("{user_init}")')
+            except Exception as e:
+                import logging
+                logging.getLogger("neotune").error(f"Failed to load user config: {e}")
+        else:
+            # If the user doesn't have an init.lua, let's create a stub for them so they know where to configure it
+            try:
+                with open(user_init, "w") as f:
+                    f.write("""-- NeoTune User Configuration
+-- This file overrides the default internal configuration
+-- You can set your own keybindings, theme, and audio settings here.
+-- Example:
+-- neotune.set_leader("space")
+-- neotune.map("p", "play_pause", "Play/Pause")
+-- neotune.set_theme("catppuccin")
+""")
+            except Exception as e:
+                import logging
+                logging.getLogger("neotune").error(f"Failed to create stub: {e}")
 
         try:
-            # Run the user's init.lua
-            self.lua.require("init")
-
             # Extract config from Lua global
-            tui_api = self.lua.eval("spotify_tui")
+            tui_api = self.lua.eval("neotune")
 
             if tui_api:
                 if getattr(tui_api, "theme", None):
@@ -276,4 +320,4 @@ class UserPreferences:
         self.theme = theme_name
         theme_file = os.path.join(self.config_dir, "theme.lua")
         with open(theme_file, "w") as f:
-            f.write(f'spotify_tui.set_theme("{theme_name}")\n')
+            f.write(f'neotune.set_theme("{theme_name}")\n')

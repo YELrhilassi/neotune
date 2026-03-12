@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "spotify-tui"
+name = "neotune"
 version = "0.1.0"
 description = "A sleek, Neovim-inspired Spotify client for the terminal"
 readme = "README.md"
@@ -80,7 +80,7 @@ dev = [
 ]
 
 [project.scripts]
-spotify-tui = "app:main"
+neotune = "app:main"
 
 [tool.setuptools]
 packages = ["src"]

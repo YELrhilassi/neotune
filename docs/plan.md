@@ -1,6 +1,6 @@
-# Spotify TUI Architecture Plan
+# NeoTune Architecture Plan
 
-This document outlines the high-level architecture for refactoring the Spotify TUI application into a robust, maintainable, and feature-rich system.
+This document outlines the high-level architecture for refactoring the NeoTune application into a robust, maintainable, and feature-rich system.
 
 ## 1. Application State Manager (`ApplicationState`)
 - **Role:** The central source of truth for the application's current condition.

@@ -1,6 +1,6 @@
 # Lua Configuration Guide
 
-Spotify TUI leverages Lua for its configuration system, allowing users to define their own keybindings, themes, and audio settings in a format that should feel very familiar to Neovim users.
+NeoTune leverages Lua for its configuration system, allowing users to define their own keybindings, themes, and audio settings in a format that should feel very familiar to Neovim users.
 
 ## Config Directory Structure
 
@@ -23,7 +23,7 @@ Your `init.lua` is where you tie everything together. You can use the standard `
 -- lua/init.lua
 
 -- Enable auto-play on startup (optional)
-spotify_tui.set_auto_play(true)
+neotune.set_auto_play(true)
 
 require("theme")
 require("keymaps")
@@ -35,10 +35,10 @@ require("commands")
 
 | Function | Description |
 | --- | --- |
-| `spotify_tui.set_leader(key)` | Sets the leader key (default: `space`) |
-| `spotify_tui.set_which_key(boolean)` | Toggles the WhichKey discovery popup |
-| `spotify_tui.set_auto_play(boolean)` | Automatically start playback on application launch |
-| `spotify_tui.set_theme(name)` | Sets the UI theme |
+| `neotune.set_leader(key)` | Sets the leader key (default: `space`) |
+| `neotune.set_which_key(boolean)` | Toggles the WhichKey discovery popup |
+| `neotune.set_auto_play(boolean)` | Automatically start playback on application launch |
+| `neotune.set_theme(name)` | Sets the UI theme |
 
 ## Keybindings (`keymaps.lua`)
 
@@ -48,20 +48,20 @@ The application uses a "leader" system similar to Neovim. You first press a lead
 
 ```lua
 -- lua/keymaps.lua
-spotify_tui.set_leader("space") -- Use a string key name
+neotune.set_leader("space") -- Use a string key name
 ```
 
 ### Mapping Actions
 
-You can map specific actions to keys using `spotify_tui.map(key, action, description)`:
+You can map specific actions to keys using `neotune.map(key, action, description)`:
 
 ```lua
 -- lua/keymaps.lua
-spotify_tui.map("p", "play_pause", "Play / Pause")
-spotify_tui.map("n", "next_track", "Next Track")
-spotify_tui.map("b", "prev_track", "Previous Track")
-spotify_tui.map("space", "search_prompt", "Telescope Search")
-spotify_tui.map("Q", "logout", "Logout (Clear session)")
+neotune.map("p", "play_pause", "Play / Pause")
+neotune.map("n", "next_track", "Next Track")
+neotune.map("b", "prev_track", "Previous Track")
+neotune.map("space", "search_prompt", "Telescope Search")
+neotune.map("Q", "logout", "Logout (Clear session)")
 ```
 
 Additional actions available for mapping:
@@ -83,7 +83,7 @@ You can customize the global navigation keys used to traverse lists and panels:
 ```lua
 -- lua/keymaps.lua
 -- Parameters: up, down, left, right, page_up, page_down
-spotify_tui.set_nav("k", "j", "h", "l", "U", "D")
+neotune.set_nav("k", "j", "h", "l", "U", "D")
 ```
 
 ## Audio Configuration (`audio.lua`)
@@ -93,7 +93,7 @@ Control the quality and backend of your high-quality DRM playback.
 ```lua
 -- lua/audio.lua
 -- Parameters: backend, device, bitrate
-spotify_tui.set_audio("pulseaudio", "default", "320")
+neotune.set_audio("pulseaudio", "default", "320")
 ```
 
 **Bitrates**: "96", "160", "320" (Requires Spotify Premium).
@@ -104,6 +104,6 @@ Register command aliases that can be typed directly into the command bar (`:`):
 
 ```lua
 -- lua/commands.lua
-spotify_tui.command("logout", "logout", "Logout and clear all sessions")
-spotify_tui.command("next", "next_track", "Skip to next track")
+neotune.command("logout", "logout", "Logout and clear all sessions")
+neotune.command("next", "next_track", "Skip to next track")
 ```

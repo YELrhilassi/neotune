@@ -143,7 +143,6 @@ class ContentTree(Tree):
         if node_type in ["group", "category_root"]:
             if node_type == "category_root" and not node.children:
                 self.load_category_playlists(node, data.get("id"), str(node.label))
-            node.toggle()
             return
 
         node_id = data.get("id")

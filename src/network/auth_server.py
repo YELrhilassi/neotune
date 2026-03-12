@@ -30,7 +30,7 @@ HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
 <head>
-<title>Spotify TUI Setup</title>
+<title>NeoTune Setup</title>
 <style>
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #121212; color: #fff; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
 .card { background: #181818; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); width: 400px; text-align: center; }
@@ -46,7 +46,7 @@ a { color: #1DB956; text-decoration: none; }
 </head>
 <body>
 <div class="card">
-<h1 class="spotify-green">Spotify TUI</h1>
+<h1 class="spotify-green">NeoTune</h1>
 
 {% if step == 'config' %}
 <p>Enter your Spotify Application credentials.</p>

@@ -2,7 +2,7 @@
 -- Add your favorite special or personalized playlists here
 -- These will appear in the 'Featured' section of the sidebar
 
-spotify_tui.special_playlists = {
+neotune.special_playlists = {
 	{
 		name = "Discover Weekly",
 		uri = "spotify:playlist:37i9dQZEVXcXg9Q3RuG7o9", -- Replace with yours if different

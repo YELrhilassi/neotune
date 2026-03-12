@@ -1,4 +1,4 @@
-spotify_tui.set_theme("catppuccin", {
+neotune.set_theme("catppuccin", {
     -- You can override specific theme variables here
     -- primary = "#89b4fa",
     -- accent = "#cba6f7",

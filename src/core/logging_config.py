@@ -1,4 +1,4 @@
-"""Centralized logging configuration for Spotify TUI."""
+"""Centralized logging configuration for NeoTune."""
 
 import logging
 import sys
@@ -21,7 +21,7 @@ def setup_logging(
     Returns:
         Configured logger instance
     """
-    logger = logging.getLogger("spotify_tui")
+    logger = logging.getLogger("neotune")
     logger.setLevel(level)
     logger.handlers = []  # Clear existing handlers
 
@@ -50,14 +50,14 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
     """Get logger instance for module.
 
     Args:
-        name: Module name (default: "spotify_tui")
+        name: Module name (default: "neotune")
 
     Returns:
         Logger instance
     """
     if name:
-        return logging.getLogger(f"spotify_tui.{name}")
-    return logging.getLogger("spotify_tui")
+        return logging.getLogger(f"neotune.{name}")
+    return logging.getLogger("neotune")
 
 
 class LogMixin:
@@ -66,4 +66,4 @@ class LogMixin:
     @property
     def logger(self) -> logging.Logger:
         """Get logger for class."""
-        return logging.getLogger(f"spotify_tui.{self.__class__.__name__}")
+        return logging.getLogger(f"neotune.{self.__class__.__name__}")

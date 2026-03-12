@@ -27,7 +27,7 @@ class Store:
         if self._initialized:
             return
 
-        self.config_dir = Path.home() / ".config" / "spotify-tui"
+        self.config_dir = Path.home() / ".config" / "neotune"
         self.state_file = self.config_dir / "state.json"
 
         self._state: Dict[str, Any] = {

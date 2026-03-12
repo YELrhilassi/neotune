@@ -73,7 +73,7 @@ class TerminalRenderer(App):
             self.register_theme(theme)
 
     def on_mount(self) -> None:
-        self.title = "Spotify TUI"
+        self.title = "NeoTune"
         self.apply_theme(self.user_prefs.theme)
 
         # Sync persistent bindings and Lua config

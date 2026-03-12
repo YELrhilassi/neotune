@@ -54,7 +54,7 @@ class DebugConfig:
     network_tracking: bool = True
     performance_tracking: bool = True
     log_to_file: bool = False
-    log_file_path: str = "~/.config/spotify-tui/debug.log"
+    log_file_path: str = "~/.config/neotune/debug.log"
     max_log_entries: int = 1000
     max_network_history: int = 100
     log_level: str = "info"

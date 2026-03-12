@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Spotify TUI application is built around a centralized state, a reactive UI architecture, and a modular logic layer driven by custom hooks. It decouples the user interface from the complexities of the Spotify API and background playback daemons.
+The NeoTune application is built around a centralized state, a reactive UI architecture, and a modular logic layer driven by custom hooks. It decouples the user interface from the complexities of the Spotify API and background playback daemons.
 
 ## 1. Modular Logic Layer (Hooks)
 
@@ -32,7 +32,7 @@ The interface uses the Textual framework with a heavy emphasis on composition.
 
 The app handles sensitive data through an integrated wizard.
 
-- **Setup Wizard**: An internal UI flow that collects API credentials and secures them in `~/.config/spotify-tui/client.yml` with `600` permissions.
+- **Setup Wizard**: An internal UI flow that collects API credentials and secures them in `~/.config/neotune/client.yml` with `600` permissions.
 - **Authorization Flow**: A "terminal-silent" process that manages Spotify OAuth entirely within the TUI and the user's browser.
 
 ## 5. Playback Daemon (`src/network/local_player.py`)

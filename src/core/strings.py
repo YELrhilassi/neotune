@@ -1,5 +1,5 @@
 class Strings:
-    APP_TITLE = "Spotify TUI"
+    APP_TITLE = "NeoTune"
     LIBRARY_TITLE = "Library"
     TRACKS_TITLE = "Tracks"
     YOUR_PLAYLISTS = "Your Playlists"

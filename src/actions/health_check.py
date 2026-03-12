@@ -27,7 +27,7 @@ def perform_health_check(app: Any) -> str:
         Full health report as formatted string
     """
     report: List[str] = []
-    report.append("[bold #cba6f7]=== Spotify TUI Health Report ===[/]\n")
+    report.append("[bold #cba6f7]=== NeoTune Health Report ===[/]\n")
 
     # Config Check
     config = Container.resolve(ClientConfiguration)

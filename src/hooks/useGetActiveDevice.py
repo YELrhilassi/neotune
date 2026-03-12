@@ -23,7 +23,7 @@ def useGetActiveDevice():
     # If no preferred ID, look for the TUI Player
     if not target_device_id:
         for device in devices:
-            if device['name'] == "Spotify TUI Player":
+            if device['name'] == "NeoTune Player":
                 target_device_id = device['id']
                 store.set("preferred_device_id", target_device_id)
                 break

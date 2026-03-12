@@ -8,7 +8,7 @@ from src.state.store import Store
 
 def useSwitchToLocalPlayer(app, force=False):
     """
-    Switches playback to the local "Spotify TUI Player".
+    Switches playback to the local "NeoTune Player".
     Uses optimized service calls to prevent network spam.
     """
     try:
@@ -27,7 +27,7 @@ def useSwitchToLocalPlayer(app, force=False):
             if not force and is_any_active:
                 return True
 
-            target_device = next((d for d in devices if d["name"] == "Spotify TUI Player"), None)
+            target_device = next((d for d in devices if d["name"] == "NeoTune Player"), None)
 
             if target_device:
                 dev_id = target_device["id"]

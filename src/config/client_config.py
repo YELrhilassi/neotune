@@ -19,7 +19,7 @@ class ClientConfiguration:
 
         Args:
             config_dir: Optional custom configuration directory path.
-                       Defaults to ~/.config/spotify-tui
+                       Defaults to ~/.config/neotune
         """
         if config_dir is None:
             self.config_dir = Paths.CONFIG_DIR

@@ -1,4 +1,4 @@
-"""Application-wide constants for Spotify TUI."""
+"""Application-wide constants for NeoTune."""
 
 from pathlib import Path
 from enum import Enum
@@ -45,7 +45,7 @@ class NavigationKeys:
 class PlayerSettings:
     """Player-related constants."""
 
-    DEVICE_NAME = "Spotify TUI Player"
+    DEVICE_NAME = "NeoTune Player"
     DEFAULT_BITRATE = AudioBitrate.HIGH
     DEFAULT_BACKEND = AudioBackend.PULSEAUDIO
     DEFAULT_DEVICE = "default"
@@ -64,8 +64,8 @@ class ServerSettings:
 class Paths:
     """Application paths."""
 
-    CONFIG_DIR = Path.home() / ".config" / "spotify-tui"
-    CACHE_DIR = Path.home() / ".cache" / "spotify_tui_librespot"
+    CONFIG_DIR = Path.home() / ".config" / "neotune"
+    CACHE_DIR = Path.home() / ".cache" / "neotune_librespot"
     STATE_FILE = CONFIG_DIR / "state.json"
     CLIENT_CONFIG_FILE = CONFIG_DIR / "client.yml"
     LIBRESPOT_LOG_FILE = CACHE_DIR / "librespot.log"
@@ -83,7 +83,7 @@ class CacheSettings:
 class KeyringKeys:
     """Keyring service names."""
 
-    SERVICE_NAME = "spotify_tui"
+    SERVICE_NAME = "neotune"
     CLIENT_ID_KEY = "client_id"
     CLIENT_SECRET_KEY = "client_secret"
 

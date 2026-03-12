@@ -29,7 +29,7 @@ class CacheStore:
         Args:
             max_size: Maximum number of items to keep in memory
             enable_disk: Whether to persist cache to disk
-            disk_path: Path for disk cache file (defaults to ~/.cache/spotify-tui/cache.json)
+            disk_path: Path for disk cache file (defaults to ~/.cache/neotune/cache.json)
         """
         self._store: Dict[str, Dict[str, Any]] = {}
         self.max_size = max_size

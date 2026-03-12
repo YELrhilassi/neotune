@@ -71,7 +71,7 @@ class OnboardingScreen(Screen):
     def compose(self) -> ComposeResult:
         with Center():
             with Vertical(id="setup-mini-card"):
-                yield Label("󰓇 Spotify TUI Setup", id="setup-title-minimal")
+                yield Label("󰓇 NeoTune Setup", id="setup-title-minimal")
                 yield Static(
                     "To begin, please complete the configuration in your browser.\n"
                     f"Visit: [bold cyan]http://127.0.0.1:8080[/]",

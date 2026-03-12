@@ -27,7 +27,7 @@ def useEnsureActiveDevice(app, silent=True):
         if not is_active:
             # Check if our local player is available before trying to transfer
             devices = playback_svc.get_devices()
-            has_local = any(d.get("name") == "Spotify TUI Player" for d in devices)
+            has_local = any(d.get("name") == "NeoTune Player" for d in devices)
 
             if has_local:
                 if not silent:
