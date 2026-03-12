@@ -45,6 +45,7 @@ class TerminalRenderer(App):
         "../../styles/_main_view.tcss",
         "../../styles/_modals.tcss",
         "../../styles/_telescope.tcss",
+        "../../styles/_fuzzy.tcss",
         "../../styles/_onboarding.tcss",
     ]
 

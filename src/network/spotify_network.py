@@ -122,11 +122,11 @@ class SpotifyNetwork:
     def get_user_profile(self) -> Optional[dict[str, Any]]:
         return self.library.get_user_profile()
 
-    def get_liked_songs(self, limit=50) -> list[dict[str, Any]]:
-        return self.library.get_liked_songs(limit)
+    def get_liked_songs(self, limit=50, offset=0) -> list[dict[str, Any]]:
+        return self.library.get_liked_songs(limit, offset)
 
     def get_playlists(self, limit=50) -> list[dict[str, Any]]:
-        return self.library.get_playlists(limit)
+        return self.library.get_playlists()
 
     def get_playlist_tracks(self, pid, limit=50) -> list[dict[str, Any]]:
         return self.library.get_playlist_tracks(pid, limit)

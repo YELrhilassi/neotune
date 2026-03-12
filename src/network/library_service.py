@@ -12,40 +12,60 @@ class LibraryService(SpotifyServiceBase):
             return None
         return self._safe_api_call(self.sp.current_user, track_name="current_user", cache_ttl=3600)
 
-    def get_liked_songs(self, limit: int = 50) -> list[dict[str, Any]]:
+    def get_liked_songs(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         if not self.sp:
             return []
         result = self._safe_api_call(
             self.sp.current_user_saved_tracks,
             limit=limit,
+            offset=offset,
             default_return={},
             track_name="liked_songs",
             cache_ttl=60,
+            min_interval=0.0,
         )
         return result.get("items", []) if result else []
 
-    def get_playlists(self, limit: int = 50) -> list[dict[str, Any]]:
+    def get_playlists(self) -> list[dict[str, Any]]:
         if not self.sp:
             return []
-        result = self._safe_api_call(
-            self.sp.current_user_playlists,
-            limit=limit,
-            default_return={},
-            track_name="user_playlists",
-            cache_ttl=300,
-        )
-        return result.get("items", []) if result else []
+        
+        all_playlists = []
+        offset = 0
+        while True:
+            result = self._safe_api_call(
+                self.sp.current_user_playlists,
+                limit=50,
+                offset=offset,
+                default_return={},
+                track_name="user_playlists",
+                cache_ttl=43200, # Half a day
+                min_interval=0.0
+            )
+            items = result.get("items", []) if result else []
+            if not items:
+                break
+            all_playlists.extend(items)
+            
+            total = result.get("total", 0) if result else 0
+            if offset + 50 >= total:
+                break
+            offset += 50
+            
+        return all_playlists
 
-    def get_playlist_tracks(self, playlist_id: str, limit: int = 50) -> list[dict[str, Any]]:
+    def get_playlist_tracks(self, playlist_id: str, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         if not self.sp:
             return []
         result = self._safe_api_call(
             self.sp.playlist_items,
             playlist_id,
             limit=limit,
+            offset=offset,
             default_return={},
             track_name="playlist_items",
             cache_ttl=60,
+            min_interval=0.0,
         )
         return result.get("items", []) if result else []
 
@@ -56,7 +76,7 @@ class LibraryService(SpotifyServiceBase):
             self.sp.album_tracks,
             album_id,
             limit=limit,
-            default_return={},
+                        default_return={},
             track_name="album_tracks",
             cache_ttl=3600,
         )
@@ -101,7 +121,7 @@ class LibraryService(SpotifyServiceBase):
         result = self._safe_api_call(
             self.sp.current_user_recently_played,
             limit=limit,
-            default_return={},
+                        default_return={},
             track_name="recently_played",
             cache_ttl=60,
         )

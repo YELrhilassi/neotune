@@ -44,6 +44,39 @@ class TrackList(DataTable):
     def _handle_ui_change(self, states):
         self._handle_loading(states)
 
+
+
+    def on_resize(self, event: events.Resize):
+        self.app.call_later(self._update_dynamic_column_widths)
+
+    def _update_dynamic_column_widths(self):
+        cols = list(self.columns.values())
+        if len(cols) != 4:
+            return
+
+        total_w = max(10, self.size.width - 2) # account for borders/padding
+
+        cols[3].auto_width = False
+        cols[3].width = max(8, cols[3].content_width)
+        
+        remaining = max(5, total_w - cols[3].width - 6) # approx 6 chars for column spacing
+        
+        c0_w = max(len("Track") + 2, cols[0].content_width)
+        c1_w = max(len("Artist") + 2, cols[1].content_width)
+        c2_w = max(len("Album") + 2, cols[2].content_width)
+        
+        sum_c = c0_w + c1_w + c2_w
+        
+        if sum_c > 0:
+            cols[0].width = max(len("Track") + 2, int(remaining * (c0_w / sum_c)))
+            cols[1].width = max(len("Artist") + 2, int(remaining * (c1_w / sum_c)))
+            cols[2].width = max(len("Album") + 2, remaining - cols[0].width - cols[1].width)
+
+        for c in cols[:3]:
+            c.auto_width = False
+            
+        self.refresh()
+
     def safe_load_tracks(self, tracks: list):
         if not self.app:
             return
@@ -75,8 +108,14 @@ class TrackList(DataTable):
         )
         self.clear()
         self.track_data_map = {}
+        
+        # Reset columns to auto_width to let them shrink based on new content
+        for c in self.columns.values():
+            c.auto_width = True
+            c.content_width = len(c.label.plain)
 
         if not tracks:
+            self._update_dynamic_column_widths()
             self.refresh()
             return
 
@@ -94,18 +133,22 @@ class TrackList(DataTable):
                     unique_key = f"{uri}_{uuid.uuid4().hex[:8]}"
                     self.track_data_map[unique_key] = item
                     icon = Icons.PLAYLIST if ctype == "playlist" else Icons.ALBUM
-                    artist_display = metadata.get("artists") or f"[{ctype.capitalize()}]"
+                    artist_display = metadata.get("artists", "")
                     self.add_row(
                         f"{icon} {strip_icons(name)}",
                         artist_display,
-                        "Playlist" if ctype == "playlist" else strip_icons(name),
+                        "" if ctype == "playlist" else strip_icons(name),
                         "-",
                         key=unique_key,
                     )
                     continue
 
                 # Track Type
-                track = item.get("track") if "track" in item else item
+                if "track" in item and isinstance(item["track"], dict):
+                    track = item["track"]
+                else:
+                    track = item
+                
                 if not track or not isinstance(track, dict) or "name" not in track:
                     continue
 
@@ -140,7 +183,21 @@ class TrackList(DataTable):
                 continue
 
         self.debug.debug("TrackList", f"Finished loading {len(self.track_data_map)} rows")
+        self._update_dynamic_column_widths()
         self.refresh()
+
+
+    def focus_item_by_uri(self, uri: str):
+        # Find the row index and move cursor
+        idx = 0
+        for key, item in self.track_data_map.items():
+            item_uri = item.get("uri")
+            if item_uri == uri:
+                self.move_cursor(row=idx, column=0, animate=True)
+                self.focus()
+                return True
+            idx += 1
+        return False
 
     @on(DataTable.RowSelected)
     def handle_row_selection(self, event: DataTable.RowSelected):
@@ -153,22 +210,30 @@ class TrackList(DataTable):
 
         if item_data.get("type") == "context":
             uri = item_data.get("uri")
+            display_name = item_data.get("name", "Context")
 
-            def _play_context():
-                if not uri or ":" not in uri:
+            def on_context_action_selected(action: Optional[str]):
+                if not action:
                     return
-                if play_track(uri, self.app):
-                    app_ref = cast("TerminalRenderer", self.app)
-                    if app_ref and hasattr(app_ref, "update_now_playing"):
 
-                        def _update0():
-                            app_ref.update_now_playing(force=True)
+                def _play_context():
+                    if action == "play":
+                        if not uri or ":" not in uri:
+                            return
+                        if play_track(uri, self.app):
+                            app_ref = cast("TerminalRenderer", self.app)
+                            if app_ref and hasattr(app_ref, "update_now_playing"):
 
-                        app_ref.call_from_thread(_update0)
+                                def _update0():
+                                    app_ref.update_now_playing(force=True)
 
-            import threading
+                                app_ref.call_from_thread(_update0)
 
-            threading.Thread(target=_play_context, daemon=True).start()
+                import threading
+
+                threading.Thread(target=_play_context, daemon=True).start()
+
+            self.app.push_screen(TrackMenuPopup(uri, display_name), on_context_action_selected)
             return
 
         track_data = item_data

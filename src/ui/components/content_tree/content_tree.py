@@ -140,18 +140,10 @@ class ContentTree(Tree):
             return
 
         node_type = data.get("type")
-        if node_type in ["group", "category_root", "spotify_user_root"]:
+        if node_type in ["group", "category_root"]:
             if node_type == "category_root" and not node.children:
                 self.load_category_playlists(node, data.get("id"), str(node.label))
-            elif node_type == "spotify_user_root" and not node.children:
-                self.load_user_discovery_playlists(node, data.get("id"))
             node.toggle()
-            return
-
-        if node_type == "load_more_user_playlists":
-            self.load_user_discovery_playlists(
-                node.parent, data.get("user_id"), offset=data.get("offset", 0), load_more_node=node
-            )
             return
 
         node_id = data.get("id")
@@ -159,6 +151,8 @@ class ContentTree(Tree):
 
         if node_type == "playlist":
             self.load_playlist_tracks(node_id)
+        elif node_type == "spotify_user_leaf":
+            self.load_spotify_user_playlists_to_table(node_id)
         elif node_type == "liked_songs":
             self.load_liked_songs()
         elif node_type == "recently_played":
@@ -169,80 +163,113 @@ class ContentTree(Tree):
             self.load_featured_hub()
 
     @work(exclusive=True, thread=True)
-    def load_user_discovery_playlists(
-        self,
-        node: TreeNode,
-        user_id: str,
-        offset: int = 0,
-        load_more_node: Optional[TreeNode] = None,
-    ):
-        try:
-            if not load_more_node:
-                self.app.call_from_thread(
-                    lambda: node.add_leaf("Loading...", data={"type": "loading"})
-                )
-            else:
+    def load_spotify_user_playlists_to_table(self, user_id: str):
+        import time
 
-                def _update_loading():
-                    load_more_node.label = "Loading..."
+        def _update_ui_with_playlists(pl_list, focus=False):
+            import re
+            import datetime
 
-                self.app.call_from_thread(_update_loading)
-            self.app.call_from_thread(node.expand)
+            current_year = datetime.datetime.now().year
 
-            result = self.network.discovery.get_user_playlists(
-                user_id, limit=50, offset=offset, fetch_details=True
-            )
-            playlists = result.get("items", [])
-            total = result.get("total", 0)
-            next_offset = offset + len(playlists)
+            def get_sort_key(pl):
+                name = pl.get("name", "")
+                if not name:
+                    return (3, "")
+                lname = name.lower()
 
-            def _update_ui():
-                if not load_more_node:
-                    node.remove_children()
-                if not playlists and not load_more_node:
-                    node.add_leaf("[dim]No playlists found[/]", data={"type": "info"})
-                    return
-                if load_more_node:
-                    load_more_node.remove()
+                match = re.search(r"\b(19|20)\d{2}\b", lname)
+                year = int(match.group()) if match else None
 
-                for pl in playlists:
-                    if pl and isinstance(pl, dict):
-                        f = pl.get("followers", 0)
-                        f_str = (
-                            f" ({f / 1e6:.1f}M followers)"
-                            if f >= 1e6
-                            else (
-                                f" ({f / 1e3:.0f}K followers)"
-                                if f >= 1e3
-                                else (f" ({f} followers)" if f > 0 else "")
-                            )
-                        )
-                        node.add_leaf(
-                            f"{strip_icons(pl.get('name', 'Playlist'))}[dim]{f_str}[/]",
-                            data={"type": "playlist", "id": pl.get("id")},
-                        )
+                if "top" in lname:
+                    if year == current_year:
+                        return (1, lname)
+                    elif year is None:
+                        return (2, lname)
+                    else:
+                        # "top" with an old year -> don't prioritize it at the top
+                        return (3, lname)
+                else:
+                    return (3, lname)
 
-                if next_offset < total:
-                    node.add_leaf(
-                        f"[bold #89b4fa]More... ({next_offset}/{total})[/]",
-                        data={
-                            "type": "load_more_user_playlists",
-                            "user_id": user_id,
-                            "offset": next_offset,
-                        },
+            sorted_pls = sorted(pl_list, key=get_sort_key)
+
+            # Map to context list for TrackList
+            tracks = []
+            for pl in sorted_pls:
+                if pl and isinstance(pl, dict):
+                    tracks.append(
+                        {
+                            "type": "context",
+                            "context_type": "playlist",
+                            "uri": pl.get("uri"),
+                            "name": pl.get("name"),
+                            "metadata": {"artists": ""},
+                        }
                     )
-                node.expand()
 
-            self.app.call_from_thread(_update_ui)
-        except:
-            if not load_more_node:
-                self.app.call_from_thread(node.remove_children)
+            self.app.call_from_thread(self.store.set, "current_tracks", tracks)
+            if focus:
+                self.app.call_from_thread(
+                    self.store.set, "last_active_context", "spotify_playlists", persist=True
+                )
+                self.app.call_from_thread(lambda: self.app.query_one("TrackList").focus())
+
+        try:
+            current_l = self.store.get("loading_states") or {}
+            self.app.call_from_thread(
+                self.store.set, "loading_states", {**current_l, "track_list": True}
+            )
+
+            cache_key = f"all_user_playlists_{user_id}"
+
+            # Check for a valid cache within the last 24 hours
+            cached_obj = self.store.get(cache_key)
+            cached_playlists = None
+            if cached_obj and isinstance(cached_obj, dict):
+                if time.time() - cached_obj.get("time", 0) < 86400:
+                    cached_playlists = cached_obj.get("data")
+
+            if cached_playlists:
+                _update_ui_with_playlists(cached_playlists, focus=True)
             else:
+                all_playlists = []
+                offset = 0
+                is_first = True
+                while True:
+                    # To prevent blocking the UI completely, maybe we log fetching
 
-                def _update_err():
-                    load_more_node.label = "[red]Error loading more[/]"
+                    result = self.network.discovery.get_user_playlists(
+                        user_id, limit=50, offset=offset, fetch_details=False
+                    )
+                    items = result.get("items", [])
+                    if not items:
+                        break
 
-                self.app.call_from_thread(_update_err)
+                    all_playlists.extend(items)
+
+                    # Update UI incrementally
+                    _update_ui_with_playlists(all_playlists, focus=is_first)
+                    is_first = False
+
+                    total = result.get("total", 0)
+                    if offset + 50 >= total:
+                        break
+                    offset += 50
+
+                # Cache for 1 day persistently
+                self.app.call_from_thread(
+                    self.store.set,
+                    cache_key,
+                    {"time": time.time(), "data": all_playlists},
+                    persist=True,
+                )
+
+        finally:
+            current_l = self.store.get("loading_states") or {}
+            self.app.call_from_thread(
+                self.store.set, "loading_states", {**current_l, "track_list": False}
+            )
 
     @work(exclusive=True, thread=True)
     def load_category_playlists(self, node: TreeNode, category_id: str, category_name: str = ""):
@@ -418,7 +445,23 @@ class ContentTree(Tree):
                 self.store.set, "loading_states", {**current_l, "track_list": True}
             )
 
-            tracks = self.network.library.get_playlist_tracks(playlist_id)
+            raw_tracks = self.network.library.get_playlist_tracks(playlist_id)
+            
+            # The TrackTable expects an array of tracks. 
+            # When we use get_playlist_tracks it sometimes wraps them in a `{"track": {...}}` dict.
+            tracks = []
+            for t in raw_tracks:
+                if t and isinstance(t, dict):
+                    # DO NOT use just the inner track object because TrackTable explicitly looks for `item.get("track") if "track" in item else item`
+                    # BUT wait... if it expects `item.get("track")` then passing the raw `t` is correct.
+                    tracks.append(t)
+
+            if not tracks:
+                debug.error(
+                    "ContentTree",
+                    f"Failed to fetch tracks for playlist {playlist_id} or playlist is empty (404/Private algorithmic list)",
+                )
+
             debug.debug("ContentTree", f"Fetched {len(tracks)} tracks")
 
             self.app.call_from_thread(self.store.set, "current_tracks", tracks)

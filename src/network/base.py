@@ -85,6 +85,12 @@ class SpotifyServiceBase:
 
         endpoint = track_name or func.__name__
 
+        if cache_ttl is not None:
+            cache_key = f"api:{endpoint}:{args}:{kwargs}"
+            cached_val = self._cache.get(cache_key)
+            if cached_val is not None:
+                return cached_val
+
         if min_interval:
             with self._call_lock:
                 now = time.time()
@@ -92,12 +98,6 @@ class SpotifyServiceBase:
                 if now - last_call < min_interval:
                     return default_return
                 self._last_call_times[endpoint] = now
-
-        if cache_ttl is not None:
-            cache_key = f"api:{endpoint}:{args}:{kwargs}"
-            cached_val = self._cache.get(cache_key)
-            if cached_val is not None:
-                return cached_val
 
         request_id = f"req_{str(uuid.uuid4())[:8]}"
         self._debug.network_start(request_id, "API", endpoint, kwargs)

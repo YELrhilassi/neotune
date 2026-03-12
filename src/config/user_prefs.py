@@ -29,6 +29,7 @@ class UserPreferences:
             "r": {"action": "refresh", "desc": "Refresh Data"},
             ":": {"action": "command_prompt", "desc": "Command Mode"},
             "/": {"action": "search_prompt", "desc": "Search Tracks/Playlists"},
+            "s": {"action": "fuzzy_search", "desc": "Fuzzy Search App Content"},
         }
 
         self.commands = {}
@@ -151,10 +152,8 @@ class UserPreferences:
                     self.auto_select_device = bool(tui_api.auto_select_device)
 
                 # Extract keybindings
-                lua_kb = tui_api.keymaps
+                lua_kb = getattr(tui_api, "keymaps", None)
                 if lua_kb:
-                    # Overwrite default keybindings
-                    self.keybindings.clear()
                     for k, v in lua_kb.items():
                         self.keybindings[k] = {"action": v.action, "desc": v.desc}
 

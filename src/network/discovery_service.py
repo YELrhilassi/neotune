@@ -267,40 +267,13 @@ class DiscoveryService(SpotifyServiceBase):
             limit=limit,
             offset=offset,
             track_name="user_playlists_discovery",
-            cache_ttl=3600,
+            cache_ttl=86400,
+            min_interval=0.0,
         )
         if not result:
             return {"items": [], "total": 0, "offset": 0}
 
         items = result.get("items", [])
-
-        # If requested, fetch full objects to get follower counts
-        if fetch_details and items:
-            detailed_items = []
-            for item in items:
-                if not item:
-                    continue
-                try:
-                    full_pl = self._safe_api_call(
-                        self.sp.playlist,
-                        item["id"],
-                        fields="id,name,uri,followers.total,tracks.total",
-                        track_name="playlist_details_discovery",
-                        cache_ttl=86400,  # Cache details for a long time
-                        suppress_status_codes=[404, 403],  # SILENCE THE MESS
-                    )
-                    if full_pl:
-                        # Merge followers into simplified item
-                        item["followers"] = full_pl.get("followers", {}).get("total", 0)
-                        detailed_items.append(item)
-                    else:
-                        detailed_items.append(item)
-                except:
-                    detailed_items.append(item)
-
-            # Sort by followers descending
-            detailed_items.sort(key=lambda x: x.get("followers", 0), reverse=True)
-            items = detailed_items
 
         return {
             "items": items,

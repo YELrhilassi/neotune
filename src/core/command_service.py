@@ -221,6 +221,112 @@ class SearchCommand(Command):
         app.safe_push_screen(TelescopePrompt())
 
 
+class FuzzySearchCommand(Command):
+    def execute(self, app, *args, **kwargs):
+        from src.ui.modals.fuzzy_finder import FuzzyFinderPrompt
+
+        def _on_fuzzy_selected(item):
+            if not item:
+                return
+
+            def _process_selection():
+                import time
+                try:
+                    from src.ui.components.content_tree.content_tree import ContentTree
+                    from src.ui.components.track_table import TrackList
+                    ct = app.query_one(ContentTree)
+                    tl = app.query_one(TrackList)
+                    
+                    id_val = item["id"]
+                    item_type = item.get("type")
+                    
+                    # Try to physically highlight the node in the tree if it exists
+                    def _focus_tree_node(target_id):
+                        try:
+                            def _walk_nodes(node):
+                                if getattr(node, "data", None) and node.data.get("id") == target_id:
+                                    return node
+                                for child in getattr(node, "children", []):
+                                    res = _walk_nodes(child)
+                                    if res: return res
+                                return None
+                            
+                            target = _walk_nodes(ct.root)
+                            if target:
+                                ct.cursor_node = target
+                                p = target.parent
+                                while p and p != ct.root:
+                                    p.expand()
+                                    p = p.parent
+                                ct.scroll_to_node(target)
+                        except Exception as e:
+                            pass
+
+                    if item_type in ["playlist", "context"]:
+                        app.store.set("last_active_node_id", id_val, persist=True)
+                        app.call_from_thread(_focus_tree_node, id_val)
+                        
+                        # Load the tracks
+                        if id_val == "liked_songs_leaf":
+                            ct.load_liked_songs()
+                        elif id_val == "recently_played_leaf":
+                            ct.load_recently_played()
+                        elif id_val == "made_for_you_leaf":
+                            ct.load_made_for_you()
+                        elif id_val == "featured_leaf":
+                            ct.load_featured_hub()
+                        else:
+                            # For playlists, check if it has tracks by directly checking the cache or API?
+                            # Just loading it is fine for now
+                            ct.load_playlist_tracks(id_val)
+                            
+                        # Wait a bit and check if tracks are empty. If so, and it's a spotify playlist, load spotify playlists view and highlight it
+                        time.sleep(1.0)
+                        tracks = app.store.get("current_tracks")
+                        if not tracks:
+                            if item.get("source") == "spotify":
+                                ct.load_spotify_user_playlists_to_table("spotify")
+                                time.sleep(1.0)
+                                app.call_from_thread(tl.focus_item_by_uri, item.get("uri"))
+                            elif item.get("source") == "personal":
+                                app.call_from_thread(_focus_tree_node, id_val)
+                                app.call_from_thread(ct.focus)
+
+                    elif item_type == "track":
+                        # We want to load the context where this track lives
+                        ctx_uri = item.get("context_uri")
+                        ctx_pid = ctx_uri.split(":")[-1] if ctx_uri and "playlist:" in ctx_uri else None
+                        track_uri = item.get("uri")
+                        
+                        if ctx_uri == "spotify:collection:tracks":
+                            app.call_from_thread(_focus_tree_node, "liked_songs_leaf")
+                            ct.load_liked_songs()
+                        elif ctx_pid:
+                            app.call_from_thread(_focus_tree_node, ctx_pid)
+                            ct.load_playlist_tracks(ctx_pid)
+                            
+                        # Wait for tracks to load in table
+                        for _ in range(20):
+                            time.sleep(0.1)
+                            if not app.store.get("loading_states", {}).get("track_list", True):
+                                break
+                        
+                        # Wait a tiny bit more for render
+                        time.sleep(0.2)
+                        
+                        # Focus the specific track
+                        app.call_from_thread(tl.focus_item_by_uri, track_uri)
+
+                except Exception as e:
+                    app.call_from_thread(app.notify, f"Failed to navigate: {e}")
+
+            import threading
+            threading.Thread(target=_process_selection, daemon=True).start()
+
+        app.safe_push_screen(FuzzyFinderPrompt(), _on_fuzzy_selected)
+
+
+
 class RestartDaemonCommand(Command):
     def execute(self, app, *args, **kwargs):
         player = Container.resolve(LocalPlayer)
@@ -270,6 +376,7 @@ class CommandService:
             ("show_device", ShowDeviceCommand()),
             ("show_audio", ShowAudioCommand()),
             ("search_prompt", SearchCommand()),
+            ("fuzzy_search", FuzzySearchCommand()),
             ("restart_daemon", RestartDaemonCommand()),
             ("command_prompt", CommandPromptCommand()),
             ("theme_selector", ThemeSelectorCommand()),

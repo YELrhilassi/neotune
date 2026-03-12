@@ -24,6 +24,7 @@ class AuthService:
             return
 
         self._auth_manager = SpotifyOAuth(
+            requests_timeout=5,
             client_id=self.config.client_id,
             client_secret=self.config.client_secret,
             redirect_uri=self.config.redirect_uri,

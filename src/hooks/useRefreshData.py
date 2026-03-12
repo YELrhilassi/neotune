@@ -35,7 +35,126 @@ def useRefreshData(app):
             metadata = network.get_browse_metadata()
             app.call_from_thread(store.set, "browse_metadata", metadata)
 
-            # 4. History
+
+            # 4. Prefetch Spotify Playlists for fuzzy finder
+            debug.debug("Hooks", "Prefetching Spotify playlists")
+            cache_key = "all_user_playlists_spotify"
+            cached_obj = store.get(cache_key)
+            import time
+            if not (cached_obj and isinstance(cached_obj, dict) and time.time() - cached_obj.get("time", 0) < 86400):
+                all_playlists = []
+                offset = 0
+                while True:
+                    result = network.discovery.get_user_playlists("spotify", limit=50, offset=offset, fetch_details=False)
+                    items = result.get("items", [])
+                    if not items: break
+                    all_playlists.extend(items)
+                    if offset + 50 >= result.get("total", 0): break
+                    offset += 50
+                app.call_from_thread(store.set, cache_key, {"time": time.time(), "data": all_playlists}, persist=True)
+
+
+
+
+            # Start a separate daemon thread to prefetch tracks inside all known playlists slowly
+            def _prefetch_all_playlist_tracks():
+                tracks_cache_key = "all_prefetched_tracks"
+                cached_tracks_obj = store.get(tracks_cache_key)
+                if cached_tracks_obj and isinstance(cached_tracks_obj, dict) and time.time() - cached_tracks_obj.get("time", 0) < 43200:
+                    return # Already prefetched within 12 hours
+                
+                all_tracks = []
+                count = 0
+                
+                # 1. Prefetch Liked Songs first
+                try:
+                    liked_offset = 0
+                    while True:
+                        liked_songs = network.get_liked_songs(limit=50, offset=liked_offset)
+                        if not liked_songs: break
+                        for item in liked_songs:
+                            if not item or not isinstance(item, dict): continue
+                            t = item.get("track")
+                            if not t or not isinstance(t, dict): continue
+                            all_tracks.append({
+                                "id": t.get("id"),
+                                "uri": t.get("uri"),
+                                "name": t.get("name", "Unknown"),
+                                "artists": [a.get("name") for a in t.get("artists", [])],
+                                "type": "track",
+                                "source": "core",
+                                "context_name": "Liked Songs",
+                                "context_uri": "spotify:collection:tracks"
+                            })
+                        
+                        if len(liked_songs) < 50: break
+                        liked_offset += 50
+                        time.sleep(0.5)
+
+                    # Save initial liked songs batch
+                    app.call_from_thread(store.set, tracks_cache_key, {"time": time.time(), "data": all_tracks}, persist=True)
+                except Exception as e:
+                    debug.warning("Hooks", f"Failed to prefetch Liked Songs: {e}")
+
+                # 2. Gather all playlists
+                target_playlists = []
+                user_pls = store.get("playlists") or []
+                for p in user_pls:
+                    if p and isinstance(p, dict): target_playlists.append((p.get("id"), p.get("name"), "personal"))
+                
+                # Just prefetch personal playlists first, then sp_obj to prioritize user data
+                sp_obj = store.get(cache_key)
+                if sp_obj and isinstance(sp_obj, dict):
+                    for p in sp_obj.get("data", []):
+                        if p and isinstance(p, dict): target_playlists.append((p.get("id"), p.get("name"), "spotify"))
+                
+                for pid, pname, source in target_playlists:
+                    if not pid: continue
+                    try:
+                        pl_offset = 0
+                        while True:
+                            pl_tracks = network.library.get_playlist_tracks(pid, limit=100, offset=pl_offset) 
+                            if not pl_tracks: break
+                            
+                            for item in pl_tracks:
+                                if not item or not isinstance(item, dict): continue
+                                t = item.get("track")
+                                if not t or not isinstance(t, dict): continue
+                                
+                                all_tracks.append({
+                                    "id": t.get("id"),
+                                    "uri": t.get("uri"),
+                                    "name": t.get("name", "Unknown"),
+                                    "artists": [a.get("name") for a in t.get("artists", [])],
+                                    "type": "track",
+                                    "source": source,
+                                    "context_name": pname,
+                                    "context_uri": f"spotify:playlist:{pid}"
+                                })
+                                
+                            if len(pl_tracks) < 100: break
+                            pl_offset += 100
+                            time.sleep(0.2)
+                            
+                        count += 1
+                        # Save incrementally every 5 playlists so the user can search immediately
+                        if count % 5 == 0:
+                            app.call_from_thread(store.set, tracks_cache_key, {"time": time.time(), "data": all_tracks}, persist=True)
+                            
+                        time.sleep(0.5)
+                    except Exception as e:
+                        debug.warning("Hooks", f"Failed to prefetch tracks for {pname}: {e}")
+                        
+                # Final save
+                app.call_from_thread(store.set, tracks_cache_key, {"time": time.time(), "data": all_tracks}, persist=True)
+
+
+
+
+            import threading
+            threading.Thread(target=_prefetch_all_playlist_tracks, daemon=True).start()
+
+            # 5. History
             debug.debug("Hooks", "Fetching recently played")
             history = network.get_recently_played()
             app.call_from_thread(store.set, "recently_played", history)

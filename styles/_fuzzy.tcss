@@ -1,0 +1,42 @@
+FuzzyFinderPrompt {
+    align: center middle;
+    background: rgba(30, 30, 46, 0.8);
+}
+
+.fuzzy-modal {
+    width: 60%;
+    height: 70%;
+    background: $surface;
+    border: round $primary;
+    padding: 1 2;
+}
+
+#fuzzy-input {
+    width: 100%;
+    border: tall $secondary;
+    background: $surface;
+    color: $text;
+    padding: 0 1;
+    margin-bottom: 1;
+}
+
+#fuzzy-input:focus {
+    border: tall $primary;
+}
+
+#fuzzy-input.normal-mode {
+    border: tall $secondary;
+}
+
+#fuzzy-results {
+    width: 100%;
+    height: 1fr;
+    background: $surface;
+    border: none;
+}
+
+#fuzzy-results:focus > .option-list--option-highlighted {
+    background: $primary;
+    color: $text;
+    text-style: bold;
+}

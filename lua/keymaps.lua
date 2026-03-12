@@ -27,3 +27,5 @@ spotify_tui.map("r", "refresh", "Refresh Data")
 spotify_tui.map("R", "recommendations", "Start Track Radio")
 spotify_tui.map("D", "restart_daemon", "Restart Playback Daemon")
 spotify_tui.map("Q", "logout", "Logout (Clear Session)")
+
+spotify_tui.map("s", "fuzzy_search", "Fuzzy Search App Content")
