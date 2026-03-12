@@ -98,6 +98,8 @@ class SpotifyScopes:
         "user-read-currently-playing",
         "user-library-read",
         "user-read-recently-played",
+        "streaming",
+        "app-remote-control",
     ]
 
 

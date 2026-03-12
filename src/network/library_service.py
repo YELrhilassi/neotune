@@ -19,7 +19,7 @@ class LibraryService(SpotifyServiceBase):
             self.sp.current_user_saved_tracks,
             limit=limit,
             offset=offset,
-            default_return={},
+            default_return=None,
             track_name="liked_songs",
             cache_ttl=60,
             min_interval=0.0,
@@ -144,7 +144,7 @@ class LibraryService(SpotifyServiceBase):
         result = self._safe_api_call(
             self.sp.current_user_recently_played,
             limit=limit,
-            default_return={},
+            default_return=None,
             track_name="recently_played",
             cache_ttl=60,
         )

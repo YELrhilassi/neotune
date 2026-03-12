@@ -1,9 +1,13 @@
+import threading
+import time
+
 from textual.app import ComposeResult
-from textual.widgets import Static, Label
 from textual.containers import Horizontal
+from textual.widgets import Label, Static
+
 from src.core.di import Container
-from src.state.store import Store
 from src.core.icons import Icons
+from src.state.store import Store
 
 
 class StatusBar(Static):
@@ -38,12 +42,32 @@ class StatusBar(Static):
         self.store.subscribe("is_authenticated", lambda val, **kw: self.safe_update())
         self.store.subscribe("preferred_device_name", lambda val, **kw: self.safe_update())
         self.store.subscribe("mode", lambda val, **kw: self.safe_update())
+        self.store.subscribe("rate_limit_until", lambda val, **kw: self.safe_update())
+
+        # Set interval for rate limit countdown and auto-retry
+        self.set_interval(1.0, self._check_rate_limit_timer)
+
+    def _check_rate_limit_timer(self):
+        """Internal timer to handle rate limit countdown and trigger retries."""
+        limit_until = self.store.get("rate_limit_until", 0)
+        if limit_until > 0:
+            now = time.time()
+            if now >= limit_until:
+                # Rate limit EXPIRED
+                self.store.set("rate_limit_until", 0)
+
+                # Trigger targeted retry for whatever data is currently missing
+                from src.hooks.useTargetedRetry import useTargetedRetry
+
+                useTargetedRetry(self.app)
+
+            # Force UI update for the countdown
+            self.safe_update()
 
     def safe_update(self):
         """Thread-safe update call."""
         if not self.app:
             return
-        import threading
 
         if threading.current_thread() is threading.main_thread():
             self.update_status()
@@ -109,6 +133,20 @@ class StatusBar(Static):
                 conn_sep.add_class("disconnected")
                 connection_lbl.remove_class("connected")
                 conn_sep.remove_class("connected")
+
+            # 5. Rate Limit Warning (Middle)
+            middle_lbl = self.query_one("#status-middle", Label)
+            limit_until = self.store.get("rate_limit_until", 0)
+            if limit_until > 0:
+                remaining = int(max(0, limit_until - time.time()))
+                if remaining > 0:
+                    middle_lbl.update(
+                        f" {Icons.INFO} [bold #f38ba8]Rate Limited: Paused for {remaining}s[/] "
+                    )
+                else:
+                    middle_lbl.update("")
+            else:
+                middle_lbl.update("")
 
         except Exception:
             pass

@@ -45,12 +45,20 @@ class CommandRegistry:
 
 def _run_network_cmd(app, func, success_msg_func=None):
     def _worker():
+        import time
+
         try:
             result = func()
             if result is not None and success_msg_func:
                 msg = success_msg_func(result)
                 if msg:
                     app.call_from_thread(app.notify, msg)
+
+            # Spotify API takes a moment to update the active playback state
+            # after commands like skip/pause are issued. Give it a tiny buffer
+            time.sleep(0.5)
+            app.call_from_thread(app.update_now_playing, force=True)
+            time.sleep(1.0)
             app.call_from_thread(app.update_now_playing, force=True)
         except Exception as e:
             logger.error(f"Command failed: {e}")
@@ -60,18 +68,40 @@ def _run_network_cmd(app, func, success_msg_func=None):
 
 class PlayPauseCommand(Command):
     def execute(self, app, *args, **kwargs):
+        # Optimistic UI Update
+        playback = app.store.get("current_playback")
+        if playback:
+            playback["is_playing"] = not playback.get("is_playing", False)
+            app.store.set("current_playback", playback)
+
         nw = Container.resolve(SpotifyNetwork)
         _run_network_cmd(app, nw.toggle_play_pause, lambda r: "Playing" if r else "Paused")
 
 
 class NextTrackCommand(Command):
     def execute(self, app, *args, **kwargs):
+        app.notify("Skipping track...", severity="information")
+
+        # Optimistic UI Update (just visually pause the progress bar so it feels fast)
+        playback = app.store.get("current_playback")
+        if playback:
+            playback["progress_ms"] = 0
+            app.store.set("current_playback", playback)
+
         nw = Container.resolve(SpotifyNetwork)
         _run_network_cmd(app, nw.next_track, lambda r: "Next track")
 
 
 class PrevTrackCommand(Command):
     def execute(self, app, *args, **kwargs):
+        app.notify("Previous track...", severity="information")
+
+        # Optimistic UI Update
+        playback = app.store.get("current_playback")
+        if playback:
+            playback["progress_ms"] = 0
+            app.store.set("current_playback", playback)
+
         nw = Container.resolve(SpotifyNetwork)
         _run_network_cmd(app, nw.prev_track, lambda r: "Previous track")
 
@@ -133,6 +163,7 @@ class RecommendationsCommand(Command):
                     limit=50, seed_tracks=seed_tracks, seed_artists=seed_artists
                 )
                 if tracks:
+                    app.call_from_thread(app.store.set, "pagination_state", {})
                     app.call_from_thread(app.store.set, "current_tracks", tracks)
                     app.call_from_thread(
                         app.store.set, "last_active_context", f"radio:{uri}", persist=True
@@ -231,26 +262,30 @@ class FuzzySearchCommand(Command):
 
             def _process_selection():
                 import time
+
                 try:
                     from src.ui.components.content_tree.content_tree import ContentTree
                     from src.ui.components.track_table import TrackList
+
                     ct = app.query_one(ContentTree)
                     tl = app.query_one(TrackList)
-                    
+
                     id_val = item["id"]
                     item_type = item.get("type")
-                    
+
                     # Try to physically highlight the node in the tree if it exists
                     def _focus_tree_node(target_id):
                         try:
+
                             def _walk_nodes(node):
                                 if getattr(node, "data", None) and node.data.get("id") == target_id:
                                     return node
                                 for child in getattr(node, "children", []):
                                     res = _walk_nodes(child)
-                                    if res: return res
+                                    if res:
+                                        return res
                                 return None
-                            
+
                             target = _walk_nodes(ct.root)
                             if target:
                                 ct.cursor_node = target
@@ -265,7 +300,7 @@ class FuzzySearchCommand(Command):
                     if item_type in ["playlist", "context"]:
                         app.store.set("last_active_node_id", id_val, persist=True)
                         app.call_from_thread(_focus_tree_node, id_val)
-                        
+
                         # Load the tracks
                         if id_val == "liked_songs_leaf":
                             ct.load_liked_songs()
@@ -279,7 +314,7 @@ class FuzzySearchCommand(Command):
                             # For playlists, check if it has tracks by directly checking the cache or API?
                             # Just loading it is fine for now
                             ct.load_playlist_tracks(id_val)
-                            
+
                         # Wait a bit and check if tracks are empty. If so, and it's a spotify playlist, load spotify playlists view and highlight it
                         time.sleep(1.0)
                         tracks = app.store.get("current_tracks")
@@ -295,36 +330,118 @@ class FuzzySearchCommand(Command):
                     elif item_type == "track":
                         # We want to load the context where this track lives
                         ctx_uri = item.get("context_uri")
-                        ctx_pid = ctx_uri.split(":")[-1] if ctx_uri and "playlist:" in ctx_uri else None
+                        ctx_pid = (
+                            ctx_uri.split(":")[-1] if ctx_uri and "playlist:" in ctx_uri else None
+                        )
                         track_uri = item.get("uri")
-                        
-                        if ctx_uri == "spotify:collection:tracks":
-                            app.call_from_thread(_focus_tree_node, "liked_songs_leaf")
-                            ct.load_liked_songs()
-                        elif ctx_pid:
-                            app.call_from_thread(_focus_tree_node, ctx_pid)
-                            ct.load_playlist_tracks(ctx_pid)
-                            
-                        # Wait for tracks to load in table
-                        for _ in range(20):
-                            time.sleep(0.1)
-                            if not app.store.get("loading_states", {}).get("track_list", True):
-                                break
-                        
-                        # Wait a tiny bit more for render
-                        time.sleep(0.2)
-                        
-                        # Focus the specific track
-                        app.call_from_thread(tl.focus_item_by_uri, track_uri)
+
+                        artists = (
+                            ", ".join([a for a in item.get("artists", [])])
+                            if item.get("artists")
+                            else ""
+                        )
+                        display_name = f"{item.get('name', 'Unknown')} by {artists}"
+
+                        def on_track_action_selected(action: Optional[str]):
+                            if not action:
+                                return
+
+                            def _worker():
+                                if action == "play":
+                                    from src.hooks.usePlayTrack import usePlayTrack
+
+                                    if usePlayTrack(track_uri, app, context_uri=ctx_uri):
+                                        app.call_from_thread(app.update_now_playing, force=True)
+                                elif action == "radio":
+                                    from src.hooks.useTrackRadio import useTrackRadio
+
+                                    useTrackRadio(track_uri, app)
+                                elif action == "save":
+                                    from src.hooks.useSaveTrack import useSaveTrack
+
+                                    useSaveTrack(track_uri, app)
+                                elif action == "remove":
+                                    from src.hooks.useRemoveTrack import useRemoveTrack
+
+                                    useRemoveTrack(track_uri, app)
+                                elif action == "go_to":
+                                    # User explicitly requested to navigate to the context
+                                    if ctx_uri == "spotify:collection:tracks":
+                                        app.call_from_thread(_focus_tree_node, "liked_songs_leaf")
+                                        app.call_from_thread(ct.load_liked_songs)
+                                    elif ctx_pid:
+                                        app.call_from_thread(_focus_tree_node, ctx_pid)
+                                        app.call_from_thread(
+                                            lambda: ct.load_playlist_tracks(ctx_pid)
+                                        )
+
+                                    # Try to focus track
+                                    def _focus_loop():
+                                        for _ in range(30):
+                                            time.sleep(0.1)
+                                            if not app.store.get("loading_states", {}).get(
+                                                "track_list", True
+                                            ):
+                                                break
+                                        time.sleep(0.2)
+
+                                        max_attempts = 20
+                                        attempts = 0
+                                        while attempts < max_attempts:
+                                            import concurrent.futures
+
+                                            future = concurrent.futures.Future()
+                                            app.call_from_thread(
+                                                lambda: future.set_result(
+                                                    tl.focus_item_by_uri(track_uri)
+                                                )
+                                            )
+                                            found = future.result(timeout=2.0)
+
+                                            if found:
+                                                break
+
+                                            state = app.store.get("pagination_state") or {}
+                                            if not state.get("has_more") or state.get("loading"):
+                                                time.sleep(0.5)
+                                                if not state.get("loading") and not state.get(
+                                                    "has_more"
+                                                ):
+                                                    break
+                                                continue
+
+                                            app.call_from_thread(tl._load_next_page)
+                                            for _ in range(20):
+                                                time.sleep(0.1)
+                                                s = app.store.get("pagination_state") or {}
+                                                if not s.get("loading"):
+                                                    break
+
+                                            time.sleep(0.1)
+                                            attempts += 1
+
+                                    threading.Thread(target=_focus_loop, daemon=True).start()
+
+                            threading.Thread(target=_worker, daemon=True).start()
+
+                        def _push_modal():
+                            from src.ui.modals.track_menu import TrackMenuPopup
+
+                            app.push_screen(
+                                TrackMenuPopup(track_uri, display_name, show_go_to=True),
+                                on_track_action_selected,
+                            )
+
+                        app.call_from_thread(_push_modal)
 
                 except Exception as e:
                     app.call_from_thread(app.notify, f"Failed to navigate: {e}")
 
             import threading
+
             threading.Thread(target=_process_selection, daemon=True).start()
 
         app.safe_push_screen(FuzzyFinderPrompt(), _on_fuzzy_selected)
-
 
 
 class RestartDaemonCommand(Command):

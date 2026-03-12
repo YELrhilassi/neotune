@@ -51,7 +51,7 @@ class NowPlaying(Static):
         except Exception:
             return
 
-        if playback and playback.get("is_playing") and playback.get("item"):
+        if playback and playback.get("item"):
             item = playback["item"]
             if not isinstance(item, dict):
                 return
@@ -59,6 +59,9 @@ class NowPlaying(Static):
             artists_list = item.get("artists", [])
             artists = strip_icons(", ".join([a.get("name", "Unknown") for a in artists_list]))
             track_name = strip_icons(item.get("name", "Unknown Track"))
+
+            is_playing = playback.get("is_playing", False)
+            play_icon = Icons.PLAY if is_playing else Icons.PAUSE
 
             shuffle_icon = Icons.SHUFFLE_ON if playback.get("shuffle_state") else Icons.SHUFFLE_OFF
             repeat_state = playback.get("repeat_state", "off")
@@ -68,7 +71,11 @@ class NowPlaying(Static):
                 else (Icons.REPEAT_TRACK if repeat_state == "track" else Icons.REPEAT_OFF)
             )
 
-            track_lbl.update(f"[bold #a6e3a1]{Icons.PLAY}  {track_name}[/]")
+            if is_playing:
+                track_lbl.update(f"[bold #a6e3a1]{play_icon}  {track_name}[/]")
+            else:
+                track_lbl.update(f"[bold #f38ba8]{play_icon}  {track_name}[/]")
+
             artist_lbl.update(f"[#cdd6f4]{Icons.ARTIST}  {artists}[/]")
             shuffle_lbl.update(f"[#89b4fa] {shuffle_icon} [/]")
             repeat_lbl.update(f"[#89b4fa] {repeat_icon} [/]")

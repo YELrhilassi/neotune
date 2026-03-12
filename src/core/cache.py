@@ -18,6 +18,14 @@ class CacheStore:
     of expired entries and size-based limits.
     """
 
+    _instance = None
+    _initialized = False
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super(CacheStore, cls).__new__(cls)
+        return cls._instance
+
     def __init__(
         self,
         max_size: int = CacheSettings.DEFAULT_MAX_SIZE,
@@ -31,10 +39,22 @@ class CacheStore:
             enable_disk: Whether to persist cache to disk
             disk_path: Path for disk cache file (defaults to ~/.cache/neotune/cache.json)
         """
+        if self._initialized:
+            # Only update properties if explicitly provided in subsequent calls
+            if enable_disk and not self.enable_disk:
+                self.enable_disk = True
+                self._load_from_disk()
+            return
+
+        import threading
+
         self._store: Dict[str, Dict[str, Any]] = {}
         self.max_size = max_size
         self.enable_disk = enable_disk
         self.disk_path = disk_path or (Paths.CACHE_DIR / "cache.json")
+        self._lock = threading.RLock()
+        self._save_timer = None
+        self._initialized = True
 
         if self.enable_disk:
             self._load_from_disk()
@@ -56,18 +76,37 @@ class CacheStore:
         except Exception as e:
             logger.warning(f"Failed to load disk cache: {e}")
 
-    def _save_to_disk(self) -> None:
-        """Save current cache to disk."""
+    def _save_to_disk_immediate(self) -> None:
+        """Save current cache to disk immediately."""
         if not self.enable_disk:
             return
 
         try:
+            with self._lock:
+                # Create a shallow copy to safely write to disk without blocking reads
+                store_copy = dict(self._store)
+
             self.disk_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.disk_path, "w") as f:
-                json.dump(self._store, f)
+                json.dump(store_copy, f)
             logger.debug("Saved cache to disk")
         except Exception as e:
             logger.warning(f"Failed to save disk cache: {e}")
+
+    def _save_to_disk(self) -> None:
+        """Debounced save to disk."""
+        if not self.enable_disk:
+            return
+
+        import threading
+
+        with self._lock:
+            if self._save_timer is not None:
+                self._save_timer.cancel()
+
+            self._save_timer = threading.Timer(2.0, self._save_to_disk_immediate)
+            self._save_timer.daemon = True
+            self._save_timer.start()
 
     def set(
         self,
@@ -97,20 +136,21 @@ class CacheStore:
 
         logger.debug(f"Cache set: {key}")
 
-    def get(self, key: str) -> Any:
+    def get(self, key: str, ignore_ttl: bool = False) -> Any:
         """Get a value by key.
 
         Args:
             key: Cache key
+            ignore_ttl: Whether to return value even if expired
 
         Returns:
-            Stored value or None if not found/expired
+            Stored value or None if not found/expired (unless ignore_ttl=True)
         """
         if key not in self._store:
             return None
 
         entry = self._store[key]
-        if time.time() > entry["expires_at"]:
+        if not ignore_ttl and time.time() > entry["expires_at"]:
             del self._store[key]
             return None
 

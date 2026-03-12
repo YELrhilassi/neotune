@@ -3,29 +3,44 @@ from textual.widgets import Label, OptionList
 from textual.containers import Middle
 from src.ui.modals.base import BaseModal
 
+
 class TrackMenuPopup(BaseModal[str]):
-    def __init__(self, item_uri: str, item_name: str):
+    def __init__(self, item_uri: str, item_name: str, show_go_to: bool = False):
         super().__init__()
         self.item_uri = item_uri
         self.item_name = item_name
-        
+        self.show_go_to = show_go_to
+
         is_track = ":track:" in item_uri
         is_playlist = ":playlist:" in item_uri
         is_album = ":album:" in item_uri
         is_artist = ":artist:" in item_uri
-        
-        play_label = "Play Track" if is_track else ("Play Playlist" if is_playlist else ("Play Album" if is_album else ("Play Artist" if is_artist else "Play")))
-        
+
+        play_label = (
+            "Play Track"
+            if is_track
+            else (
+                "Play Playlist"
+                if is_playlist
+                else ("Play Album" if is_album else ("Play Artist" if is_artist else "Play"))
+            )
+        )
+
         self.actions = [
             (play_label, "play"),
         ]
-        
+
         if is_track:
-            self.actions.extend([
-                ("Start Track Radio", "radio"),
-                ("Save to Liked Songs", "save"),
-                ("Remove from Liked Songs", "remove")
-            ])
+            if self.show_go_to:
+                self.actions.append(("Go to Playlist/Album", "go_to"))
+
+            self.actions.extend(
+                [
+                    ("Start Track Radio", "radio"),
+                    ("Save to Liked Songs", "save"),
+                    ("Remove from Liked Songs", "remove"),
+                ]
+            )
 
     def compose(self) -> ComposeResult:
         with Middle(id="track-menu-dialog"):

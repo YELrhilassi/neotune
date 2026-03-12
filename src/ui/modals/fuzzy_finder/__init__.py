@@ -17,6 +17,7 @@ from src.ui.modals.base import BaseModal
 
 from textual.message import Message
 
+
 class FuzzyInput(Input):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -101,6 +102,7 @@ class FuzzyInput(Input):
             super().__init__()
             self.direction = direction
 
+
 class FuzzyFinderPrompt(BaseModal[str]):
     BINDINGS = [
         Binding("escape", "handle_escape", "Normal Mode / Close"),
@@ -118,6 +120,7 @@ class FuzzyFinderPrompt(BaseModal[str]):
 
     def compose(self) -> ComposeResult:
         from textual.widgets import Label
+
         with Vertical(id="fuzzy-container", classes="fuzzy-modal"):
             with Horizontal(id="fuzzy-header", classes="insert-mode"):
                 yield Label(Icons.SEARCH, id="fuzzy-icon")
@@ -137,46 +140,188 @@ class FuzzyFinderPrompt(BaseModal[str]):
         items = []
 
         # 0. Sidebar Core Items
-        items.append({"id": "made_for_you_leaf", "uri": "spotify:made_for_you", "name": "Made For You", "type": "context", "owner": "Spotify", "source": "core"})
-        items.append({"id": "liked_songs_leaf", "uri": "spotify:collection:tracks", "name": "Liked Songs", "type": "context", "owner": "You", "source": "core"})
-        items.append({"id": "recently_played_leaf", "uri": "spotify:recently_played", "name": "Recently Played", "type": "context", "owner": "You", "source": "core"})
-        items.append({"id": "featured_leaf", "uri": "spotify:featured", "name": "Featured", "type": "context", "owner": "Spotify", "source": "core"})
+        items.append(
+            {
+                "id": "made_for_you_leaf",
+                "uri": "spotify:made_for_you",
+                "name": "Made For You",
+                "type": "context",
+                "owner": "Spotify",
+                "source": "core",
+            }
+        )
+        items.append(
+            {
+                "id": "liked_songs_leaf",
+                "uri": "spotify:collection:tracks",
+                "name": "Liked Songs",
+                "type": "context",
+                "owner": "You",
+                "source": "core",
+            }
+        )
+        items.append(
+            {
+                "id": "recently_played_leaf",
+                "uri": "spotify:recently_played",
+                "name": "Recently Played",
+                "type": "context",
+                "owner": "You",
+                "source": "core",
+            }
+        )
+        items.append(
+            {
+                "id": "featured_leaf",
+                "uri": "spotify:featured",
+                "name": "Featured",
+                "type": "context",
+                "owner": "Spotify",
+                "source": "core",
+            }
+        )
 
         # 1. Personal Playlists
         user_playlists = self.store.get("playlists") or []
         for pl in user_playlists:
             if pl and isinstance(pl, dict):
-                items.append({
-                    "id": pl.get("id"),
-                    "uri": pl.get("uri"),
-                    "name": pl.get("name", "Unknown"),
-                    "type": "playlist",
-                    "owner": "You",
-                    "source": "personal"
-                })
+                items.append(
+                    {
+                        "id": pl.get("id"),
+                        "uri": pl.get("uri"),
+                        "name": pl.get("name", "Unknown"),
+                        "type": "playlist",
+                        "owner": "You",
+                        "source": "personal",
+                    }
+                )
 
         # 2. Spotify Playlists
+        sp_playlists = []
         sp_cache_key = "all_user_playlists_spotify"
         sp_cached_obj = self.store.get(sp_cache_key)
         if sp_cached_obj and isinstance(sp_cached_obj, dict):
             sp_playlists = sp_cached_obj.get("data", [])
             for pl in sp_playlists:
                 if pl and isinstance(pl, dict):
-                    items.append({
-                        "id": pl.get("id"),
-                        "uri": pl.get("uri"),
-                        "name": pl.get("name", "Unknown"),
-                        "type": "playlist",
-                        "owner": "Spotify",
-                        "source": "spotify"
-                    })
+                    items.append(
+                        {
+                            "id": pl.get("id"),
+                            "uri": pl.get("uri"),
+                            "name": pl.get("name", "Unknown"),
+                            "type": "playlist",
+                            "owner": "Spotify",
+                            "source": "spotify",
+                        }
+                    )
 
         # 3. All Prefetched Tracks (from inside the playlists)
         tracks_cache_key = "all_prefetched_tracks"
         tracks_obj = self.store.get(tracks_cache_key)
         if tracks_obj and isinstance(tracks_obj, dict):
             tracks = tracks_obj.get("data", [])
-            items.extend(tracks) # They already have the right dictionary structure
+            items.extend(tracks)  # They already have the right dictionary structure
+
+        # 4. Inject V2 Persistent Cache (Loaded Liked Songs / Visited Playlists)
+        from src.core.cache import CacheStore
+
+        cache = CacheStore(enable_disk=True)
+        for key, entry in cache._store.items():
+            if key.startswith("playlist_tracks_v2:") or key == "liked_songs_tracks_v2":
+                cached_data = entry.get("value")
+                if cached_data and isinstance(cached_data, dict):
+                    cached_tracks = cached_data.get("tracks", [])
+
+                    context_name = "Liked Songs"
+                    context_uri = "spotify:collection:tracks"
+                    if key.startswith("playlist_tracks_v2:"):
+                        pid = key.split(":")[-1]
+                        context_uri = f"spotify:playlist:{pid}"
+                        context_name = "Playlist"
+                        for pl in user_playlists + sp_playlists:
+                            if pl and isinstance(pl, dict) and pl.get("id") == pid:
+                                context_name = pl.get("name", "Playlist")
+                                break
+
+                    for t in cached_tracks:
+                        if not t or not isinstance(t, dict):
+                            continue
+                        uri = t.get("uri")
+                        if not uri:
+                            continue
+
+                        album_name = "Unknown Album"
+                        if t.get("album"):
+                            album_name = t["album"].get("name", "Unknown Album")
+
+                        items.append(
+                            {
+                                "id": t.get("id"),
+                                "uri": uri,
+                                "name": t.get("name", "Unknown"),
+                                "artists": [a.get("name") for a in t.get("artists", []) if a]
+                                if "artists" in t
+                                else [],
+                                "album": album_name,
+                                "type": "track",
+                                "source": "cache_v2",
+                                "context_name": context_name,
+                                "context_uri": context_uri,
+                            }
+                        )
+
+        # 5. Inject current tracks if not already present
+        # This ensures the active playlist/liked songs is always 100% searchable
+        current_tracks = self.store.get("current_tracks") or []
+        existing_uris = {item.get("uri") for item in items if item.get("uri")}
+
+        for t in current_tracks:
+            if not t or not isinstance(t, dict):
+                continue
+            uri = t.get("uri")
+            if not uri or uri in existing_uris:
+                continue
+
+            # Format the track properly for the fuzzy finder
+            name = t.get("name", "Unknown")
+            artists = [a.get("name") for a in t.get("artists", []) if a] if "artists" in t else []
+
+            # Extract album name
+            album_name = "Unknown Album"
+            if t.get("album"):
+                album_name = t["album"].get("name", "Unknown Album")
+
+            # Extract context name if available
+            context_name = "Current List"
+            context_uri = uri
+            last_context = self.store.get("last_active_context")
+            if last_context:
+                context_uri = last_context
+                if last_context.startswith("spotify:playlist:"):
+                    playlist_id = last_context.split(":")[-1]
+                    # Try to get playlist name
+                    for pl in user_playlists + sp_playlists:
+                        if pl and isinstance(pl, dict) and pl.get("id") == playlist_id:
+                            context_name = pl.get("name", "Playlist")
+                            break
+                elif last_context == "liked_songs":
+                    context_name = "Liked Songs"
+                elif last_context == "recently_played":
+                    context_name = "Recently Played"
+
+            items.append(
+                {
+                    "id": t.get("id"),
+                    "uri": uri,
+                    "name": name,
+                    "artists": artists,
+                    "album": album_name,
+                    "type": "track",
+                    "source": "current",
+                    "context_name": context_name,
+                    "context_uri": context_uri,
+                }
+            )
 
         self.all_items = items
         self.app.call_from_thread(self._filter_and_update, self.input.value)
@@ -193,8 +338,18 @@ class FuzzyFinderPrompt(BaseModal[str]):
 
             for item in self.all_items:
                 name = item.get("name", "").lower()
-                artists = " ".join([a.lower() for a in item.get("artists", [])]) if "artists" in item else ""
-                searchable = f"{name} {artists}"
+
+                artists_list = item.get("artists", [])
+                artists = (
+                    " ".join([a.lower() for a in artists_list])
+                    if isinstance(artists_list, list)
+                    else ""
+                )
+
+                album = item.get("album", "").lower()
+                context_name = item.get("context_name", "").lower()
+
+                searchable = f"{name} {artists} {album} {context_name}".strip()
 
                 # All terms must be present in the searchable string
                 if all(term in searchable for term in terms):
@@ -206,6 +361,12 @@ class FuzzyFinderPrompt(BaseModal[str]):
                         score = 50
                     elif query in name:
                         score = 25
+                    elif query in artists:
+                        score = 20
+                    elif query in album:
+                        score = 15
+                    elif query in context_name:
+                        score = 10
 
                     # Prioritize playlists over tracks if scores are equal
                     if item.get("type") == "playlist":
@@ -245,7 +406,11 @@ class FuzzyFinderPrompt(BaseModal[str]):
         self._filter_and_update(event.value)
 
     def on_input_submitted(self, event: Input.Submitted):
-        self.results_list.focus()
+        if hasattr(self.results_list, "highlighted") and self.results_list.highlighted is not None:
+            idx = self.results_list.highlighted
+            if self.filtered_items and idx < len(self.filtered_items):
+                item = self.filtered_items[idx]
+                self.dismiss(item)
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected):
         idx = event.option_index
@@ -269,21 +434,33 @@ class FuzzyFinderPrompt(BaseModal[str]):
             self.results_list.action_cursor_down()
         elif event.direction == "up":
             self.results_list.action_cursor_up()
+        elif event.direction == "select":
+            # Simulate selection of the currently highlighted item
+            if (
+                hasattr(self.results_list, "highlighted")
+                and self.results_list.highlighted is not None
+            ):
+                idx = self.results_list.highlighted
+                if self.filtered_items and idx < len(self.filtered_items):
+                    item = self.filtered_items[idx]
+                    self.dismiss(item)
 
     def watch_input_mode(self, mode: str) -> None:
         header = self.query_one("#fuzzy-header")
-        hints = self.query_one("#fuzzy-hints")
-        
+        from textual.widgets import Label
+
+        hints = self.query_one("#fuzzy-hints", Label)
+
         if mode == "INSERT":
-            hints.update("[bold #a6e3a1]-- INSERT --[/] [dim] esc: Normal [/]")
             header.add_class("insert-mode")
+            hints.update("[bold #a6e3a1]-- INSERT --[/] [dim] esc: Normal [/]")
         else:
-            hints.update("[dim] [i/a] Insert • [j/k] Move [/]")
             header.remove_class("insert-mode")
-            
+            hints.update("[dim] [i/a] Insert • [j/k] Move [/]")
+
         # We always keep focus on the input field so our Vim bindings work
         self.input.focus()
-            
+
         if self.input.mode != mode:
             self.input.mode = mode
 

@@ -20,7 +20,16 @@ def useRefreshData(app):
         return
 
     store.set("is_refreshing_data", True)
-    store.set("loading_states", {"sidebar": True, "track_list": True, "app": True})
+
+    # Set loading only for pieces we don't have yet
+    current_loading = store.get("loading_states") or {}
+    new_loading = {**current_loading, "app": True}
+    if not store.get("playlists"):
+        new_loading["sidebar"] = True
+    if not store.get("current_tracks"):
+        new_loading["track_list"] = True
+
+    store.set("loading_states", new_loading)
     debug.info("Hooks", "Starting full data refresh")
 
     def _background_refresh():
@@ -33,21 +42,10 @@ def useRefreshData(app):
             # 2. User Playlists (Primary Source of Truth for Sidebar)
             playlists = network.get_playlists()
             if playlists:
+                # This triggers _reactive_refresh in ContentTree
                 app.call_from_thread(store.set, "playlists", playlists)
-            else:
-                # Fallback: if we got nothing from API (likely rate limit),
-                # but we already have data in the store from state.json, keep it.
-                # If store is empty, try to check the cache explicitly.
-                current_pls = store.get("playlists")
-                if not current_pls:
-                    from src.core.cache import CacheStore
 
-                    cache = CacheStore(enable_disk=True)
-                    # Try to reconstruct from individual cached pages
-                    # This is complex, but get_playlists() should have done it via _safe_api_call.
-                    pass
-
-            # 3. Dynamic Browse Metadata
+            # 3. Dynamic Browse Metadata (Discovery info)
             metadata = network.get_browse_metadata()
             if metadata and metadata.get("categories"):
                 app.call_from_thread(store.set, "browse_metadata", metadata)
@@ -70,16 +68,27 @@ def useRefreshData(app):
 
                         activity_svc = Container.resolve(ActivityService)
                         tracks = activity_svc.get_combined_history(tracks)
-                    elif last_ctx == "spotify_playlists":
-                        # We don't restore tracks for the "Spotify Playlists" leaf automatically
-                        # since it's a dynamic table load.
-                        pass
                     else:
                         parts = last_ctx.split(":")
                         if len(parts) >= 3 and parts[1] == "playlist":
                             tracks = network.get_playlist_tracks(parts[2])
 
                     if tracks:
+                        if last_ctx.startswith("spotify:playlist:"):
+                            app.call_from_thread(
+                                store.set,
+                                "pagination_state",
+                                {
+                                    "type": "playlist",
+                                    "id": last_ctx.split(":")[2],
+                                    "offset": 50,
+                                    "limit": 50,
+                                    "has_more": len(tracks) == 50,
+                                    "loading": False,
+                                },
+                            )
+                        else:
+                            app.call_from_thread(store.set, "pagination_state", {})
                         app.call_from_thread(store.set, "current_tracks", tracks)
                 except Exception:
                     pass
@@ -90,18 +99,18 @@ def useRefreshData(app):
             debug.error("Hooks", f"Data refresh failed: {e}")
         finally:
             store.set("is_refreshing_data", False)
-
             # Clear all loading indicators at once to avoid UI flashing
-            def _clear_loading():
-                store.set("loading_states", {"sidebar": False, "track_list": False, "app": False})
+            app.call_from_thread(
+                store.set,
+                "loading_states",
+                {"sidebar": False, "track_list": False, "app": False},
+            )
 
-            app.call_from_thread(_clear_loading)
-
-            # Start background prefetcher with a long delay
+            # Start background prefetcher with a very long delay
             def start_prefetcher_daemon():
                 import time
 
-                time.sleep(30)  # Wait 30s before background indexing
+                time.sleep(60)  # Wait a full minute
                 if not app.is_running:
                     return
                 try:

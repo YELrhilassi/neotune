@@ -85,13 +85,17 @@ class ContentTree(Tree):
             return
         self._is_refreshing = True
         try:
+            # Capture state before clear
             expanded_ids = self._get_expanded_node_ids(self.root)
             had_focus = self.has_focus
-            cursor_node_id = (
-                self.cursor_node.data.get("id")
-                if self.cursor_node and self.cursor_node.data
-                else None
-            )
+
+            # Use data from store (single source of truth)
+            playlists = self.store.get("playlists") or []
+            metadata = self.store.get("browse_metadata") or {}
+
+            if not playlists and not metadata:
+                # If we have literally nothing, show loading or empty
+                pass
 
             self.clear()
             CollectionBranch(self.root, self.store).build()
@@ -99,7 +103,7 @@ class ContentTree(Tree):
             DiscoveryBranch(self.root, self.store).build()
 
             self._restore_expansion(self.root, expanded_ids)
-            target_id = cursor_node_id or self.store.get("last_active_node_id")
+            target_id = self.store.get("last_active_node_id")
             if target_id:
                 self._select_node_by_id(self.root, target_id)
             if had_focus:
@@ -204,6 +208,7 @@ class ContentTree(Tree):
                 for pl in sorted_pls
                 if pl and isinstance(pl, dict)
             ]
+            self.app.call_from_thread(self.store.set, "pagination_state", {})
             self.app.call_from_thread(self.store.set, "current_tracks", tracks)
 
         try:
@@ -332,6 +337,7 @@ class ContentTree(Tree):
                         }
                     )
                     seen_uris.add(uri)
+            self.app.call_from_thread(self.store.set, "pagination_state", {})
             self.app.call_from_thread(self.store.set, "current_tracks", combined)
             self.app.call_from_thread(
                 self.store.set, "last_active_context", "made_for_you", persist=True
@@ -363,6 +369,7 @@ class ContentTree(Tree):
                 for pl in items
                 if pl
             ]
+            self.app.call_from_thread(self.store.set, "pagination_state", {})
             self.app.call_from_thread(self.store.set, "current_tracks", tracks)
             self.app.call_from_thread(
                 self.store.set, "last_active_context", "featured_hub", persist=True
@@ -389,6 +396,7 @@ class ContentTree(Tree):
 
             activity_svc = Container.resolve(ActivityService)
             combined = activity_svc.get_combined_history(api_tracks)
+            self.app.call_from_thread(self.store.set, "pagination_state", {})
             self.app.call_from_thread(self.store.set, "current_tracks", combined)
             self.app.call_from_thread(
                 self.store.set, "last_active_context", "recently_played", persist=True
@@ -405,19 +413,96 @@ class ContentTree(Tree):
     @work(exclusive=True, thread=True)
     def load_liked_songs(self):
         from src.core.debug_logger import DebugLogger
+        from src.core.cache import CacheStore
 
         debug = DebugLogger()
+        cache = CacheStore(enable_disk=True)
+        cache_key = "liked_songs_tracks_v2"
+
         try:
             current_l = self.store.get("loading_states") or {}
             self.app.call_from_thread(
                 self.store.set, "loading_states", {**current_l, "track_list": True}
             )
-            tracks = self.network.library.get_liked_songs()
-            self.app.call_from_thread(self.store.set, "current_tracks", tracks)
-            self.app.call_from_thread(
-                self.store.set, "last_active_context", "liked_songs", persist=True
-            )
-            self.app.call_from_thread(lambda: self.app.query_one("TrackList").focus())
+
+            # 1. Load from cache first for instant UI
+            cached_data = cache.get(cache_key)
+            if cached_data and isinstance(cached_data, dict):
+                cached_tracks = cached_data.get("tracks", [])
+                has_more = cached_data.get("has_more", True)
+
+                pagination_state = {
+                    "type": "liked_songs",
+                    "offset": len(cached_tracks),
+                    "limit": 50,
+                    "has_more": has_more,
+                    "loading": False,
+                }
+                self.app.call_from_thread(self.store.set, "pagination_state", pagination_state)
+                self.app.call_from_thread(self.store.set, "current_tracks", cached_tracks)
+                self.app.call_from_thread(
+                    self.store.set, "last_active_context", "liked_songs", persist=True
+                )
+                self.app.call_from_thread(lambda: self.app.query_one("TrackList").focus())
+
+            # 2. Fetch the top 50 tracks to check for updates
+            limit = 50
+            fresh_tracks = self.network.library.get_liked_songs(limit=limit, offset=0)
+
+            # 3. Merge logic
+            if cached_data and isinstance(cached_data, dict):
+                cached_tracks = cached_data.get("tracks", [])
+                cached_uris = {
+                    t.get("uri")
+                    for t in cached_tracks
+                    if t and isinstance(t, dict) and t.get("uri")
+                }
+
+                # Find truly new tracks that aren't in the cache
+                new_tracks = [
+                    t
+                    for t in fresh_tracks
+                    if t and isinstance(t, dict) and t.get("uri") not in cached_uris
+                ]
+
+                if new_tracks:
+                    debug.info(
+                        "ContentTree",
+                        f"Found {len(new_tracks)} new Liked Songs, prepending to cache.",
+                    )
+                    combined = new_tracks + cached_tracks
+
+                    # Update pagination state offset
+                    pagination_state = self.store.get("pagination_state") or {}
+                    if pagination_state.get("type") == "liked_songs":
+                        pagination_state["offset"] = len(combined)
+                        self.app.call_from_thread(
+                            self.store.set, "pagination_state", pagination_state
+                        )
+
+                    self.app.call_from_thread(self.store.set, "current_tracks", combined)
+                    cache.set(
+                        cache_key,
+                        {"tracks": combined, "has_more": cached_data.get("has_more", True)},
+                    )
+            else:
+                # No cache existed, just use the fresh tracks
+                has_more = len(fresh_tracks) == limit
+                pagination_state = {
+                    "type": "liked_songs",
+                    "offset": limit,
+                    "limit": limit,
+                    "has_more": has_more,
+                    "loading": False,
+                }
+                self.app.call_from_thread(self.store.set, "pagination_state", pagination_state)
+                self.app.call_from_thread(self.store.set, "current_tracks", fresh_tracks)
+                self.app.call_from_thread(
+                    self.store.set, "last_active_context", "liked_songs", persist=True
+                )
+                self.app.call_from_thread(lambda: self.app.query_one("TrackList").focus())
+                cache.set(cache_key, {"tracks": fresh_tracks, "has_more": has_more})
+
         except Exception as e:
             debug.error("ContentTree", f"Failed to load liked songs: {e}")
         finally:
@@ -429,22 +514,109 @@ class ContentTree(Tree):
     @work(exclusive=True, thread=True)
     def load_playlist_tracks(self, playlist_id: str):
         from src.core.debug_logger import DebugLogger
+        from src.core.cache import CacheStore
 
         debug = DebugLogger()
+        cache = CacheStore(enable_disk=True)
+        cache_key = f"playlist_tracks_v2:{playlist_id}"
+
         try:
             current_l = self.store.get("loading_states") or {}
             self.app.call_from_thread(
                 self.store.set, "loading_states", {**current_l, "track_list": True}
             )
-            tracks = self.network.library.get_playlist_tracks(playlist_id)
-            self.app.call_from_thread(self.store.set, "current_tracks", tracks)
-            self.app.call_from_thread(
-                self.store.set,
-                "last_active_context",
-                f"spotify:playlist:{playlist_id}",
-                persist=True,
+
+            # 1. Load from cache first for instant UI
+            cached_data = cache.get(cache_key)
+            if cached_data and isinstance(cached_data, dict):
+                cached_tracks = cached_data.get("tracks", [])
+                has_more = cached_data.get("has_more", True)
+
+                pagination_state = {
+                    "type": "playlist",
+                    "id": playlist_id,
+                    "offset": len(cached_tracks),
+                    "limit": 50,
+                    "has_more": has_more,
+                    "loading": False,
+                }
+                self.app.call_from_thread(self.store.set, "pagination_state", pagination_state)
+                self.app.call_from_thread(self.store.set, "current_tracks", cached_tracks)
+                self.app.call_from_thread(
+                    self.store.set,
+                    "last_active_context",
+                    f"spotify:playlist:{playlist_id}",
+                    persist=True,
+                )
+                self.app.call_from_thread(lambda: self.app.query_one("TrackList").focus())
+
+            # 2. Fetch the top 50 tracks to check for updates
+            limit = 50
+            fresh_tracks = self.network.library.get_playlist_tracks(
+                playlist_id, limit=limit, offset=0
             )
-            self.app.call_from_thread(lambda: self.app.query_one("TrackList").focus())
+
+            # 3. Merge logic
+            if cached_data and isinstance(cached_data, dict):
+                cached_tracks = cached_data.get("tracks", [])
+                cached_uris = {
+                    t.get("uri")
+                    for t in cached_tracks
+                    if t and isinstance(t, dict) and t.get("uri")
+                }
+
+                # Find truly new tracks that aren't in the cache
+                new_tracks = [
+                    t
+                    for t in fresh_tracks
+                    if t and isinstance(t, dict) and t.get("uri") not in cached_uris
+                ]
+
+                if new_tracks:
+                    debug.info(
+                        "ContentTree",
+                        f"Found {len(new_tracks)} new playlist tracks, prepending to cache.",
+                    )
+                    combined = new_tracks + cached_tracks
+
+                    # Update pagination state offset
+                    pagination_state = self.store.get("pagination_state") or {}
+                    if (
+                        pagination_state.get("type") == "playlist"
+                        and pagination_state.get("id") == playlist_id
+                    ):
+                        pagination_state["offset"] = len(combined)
+                        self.app.call_from_thread(
+                            self.store.set, "pagination_state", pagination_state
+                        )
+
+                    self.app.call_from_thread(self.store.set, "current_tracks", combined)
+                    cache.set(
+                        cache_key,
+                        {"tracks": combined, "has_more": cached_data.get("has_more", True)},
+                    )
+            else:
+                # No cache existed, just use the fresh tracks
+                has_more = len(fresh_tracks) == limit
+                pagination_state = {
+                    "type": "playlist",
+                    "id": playlist_id,
+                    "offset": limit,
+                    "limit": limit,
+                    "has_more": has_more,
+                    "loading": False,
+                }
+                self.app.call_from_thread(self.store.set, "pagination_state", pagination_state)
+                self.app.call_from_thread(self.store.set, "current_tracks", fresh_tracks)
+                self.app.call_from_thread(
+                    self.store.set,
+                    "last_active_context",
+                    f"spotify:playlist:{playlist_id}",
+                    persist=True,
+                )
+                self.app.call_from_thread(lambda: self.app.query_one("TrackList").focus())
+                cache.set(cache_key, {"tracks": fresh_tracks, "has_more": has_more})
+
         except Exception as e:
             debug.error("ContentTree", f"Failed to load playlist: {e}")
         finally:

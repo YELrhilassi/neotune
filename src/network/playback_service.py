@@ -139,18 +139,20 @@ class PlaybackService(SpotifyServiceBase):
             if not force and (now - self._last_devices_time < self._devices_cache_ttl):
                 return self._last_devices
             result = self._safe_api_call(
-                self.sp.devices, default_return={}, track_name="devices", min_interval=0.5
+                self.sp.devices, default_return=None, track_name="devices", min_interval=0.5
             )
-            devices = result.get("devices", []) if result else []
-            self._last_devices = devices
-            self._last_devices_time = now
-            try:
-                from src.state.store import Store
+            # If throttled or rate limited, it returns default_return (None). Do not overwrite cache!
+            if result is not None:
+                devices = result.get("devices", [])
+                self._last_devices = devices
+                self._last_devices_time = now
+                try:
+                    from src.state.store import Store
 
-                Store().set("devices", devices)
-            except:
-                pass
-            return devices
+                    Store().set("devices", devices)
+                except:
+                    pass
+            return self._last_devices
 
     def find_fallback_device(self) -> Optional[str]:
         devices = self.get_devices()

@@ -1,9 +1,11 @@
 import uuid
 from typing import Dict, Any, List, Optional, cast, TYPE_CHECKING
 from textual.widgets import DataTable
-from textual import on, events
+from textual import on, events, work
+from textual.binding import Binding
 from src.core.di import Container
 from src.state.store import Store
+from src.network.spotify_network import SpotifyNetwork
 from src.ui.modals.track_menu import TrackMenuPopup
 from src.hooks.track_actions import (
     play_track,
@@ -21,6 +23,13 @@ if TYPE_CHECKING:
 
 
 class TrackList(DataTable):
+    BINDINGS = [
+        Binding("shift+d", "page_down", "Page Down", show=True),
+        Binding("shift+u", "page_up", "Page Up", show=True),
+        Binding("D", "page_down", "Page Down", show=False),
+        Binding("U", "page_up", "Page Up", show=False),
+    ]
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.track_data_map: Dict[str, Any] = {}
@@ -36,6 +45,7 @@ class TrackList(DataTable):
         )
         self.cursor_type = "row"
         self.store = Store()  # Singleton
+        self.network = Container.resolve(SpotifyNetwork)
 
         # Wrap in a lambda to safely pass only what we expect, dropping kwargs
         self.store.subscribe("current_tracks", lambda val, **kw: self.safe_load_tracks(val))
@@ -75,6 +85,75 @@ class TrackList(DataTable):
 
         self.refresh()
 
+    def action_page_down(self, **kwargs):
+        super().action_page_down(**kwargs)
+        if self.cursor_row is not None and len(self.track_data_map) > 0:
+            if self.cursor_row >= len(self.track_data_map) - 20:
+                self._load_next_page()
+
+    def action_cursor_down(self, **kwargs):
+        super().action_cursor_down(**kwargs)
+        # Check if we are near the bottom to lazy load
+        if self.cursor_row is not None and len(self.track_data_map) > 0:
+            if self.cursor_row >= len(self.track_data_map) - 5:
+                self._load_next_page()
+
+    @work(thread=True)
+    def _load_next_page(self):
+        state = self.store.get("pagination_state")
+        if not state or not state.get("has_more") or state.get("loading"):
+            return
+
+        if state.get("type") not in ["playlist", "liked_songs"]:
+            return
+
+        # Update loading state
+        state["loading"] = True
+        self.store.set("pagination_state", state)
+
+        try:
+            # We don't want to flash the UI with a full loading spinner on pagination
+            # The border_title will show loading state implicitly through offset update
+
+            offset = state.get("offset", 50)
+            limit = state.get("limit", 50)
+
+            if state.get("type") == "playlist":
+                playlist_id = state.get("id")
+                new_tracks = self.network.library.get_playlist_tracks(
+                    playlist_id, limit=limit, offset=offset
+                )
+            else:  # liked_songs
+                new_tracks = self.network.library.get_liked_songs(limit=limit, offset=offset)
+
+            if new_tracks:
+                current = self.store.get("current_tracks") or []
+                combined = current + new_tracks
+                self.store.set("current_tracks", combined)
+
+                # Update Cache
+                from src.core.cache import CacheStore
+
+                cache = CacheStore(enable_disk=True)
+                has_more = len(new_tracks) == limit
+                if state.get("type") == "playlist":
+                    cache.set(
+                        f"playlist_tracks_v2:{playlist_id}",
+                        {"tracks": combined, "has_more": has_more},
+                    )
+                else:
+                    cache.set("liked_songs_tracks_v2", {"tracks": combined, "has_more": has_more})
+
+            state["offset"] = offset + len(new_tracks)
+            state["has_more"] = len(new_tracks) == limit
+
+        except Exception as e:
+            self.debug.error("TrackList", f"Failed to load more tracks: {e}")
+            state["has_more"] = False
+        finally:
+            state["loading"] = False
+            self.store.set("pagination_state", state)
+
     def safe_load_tracks(self, tracks: list):
         if not self.app:
             return
@@ -104,6 +183,27 @@ class TrackList(DataTable):
         self.debug.debug(
             "TrackList", f"load_tracks called with {len(tracks) if tracks else 0} items"
         )
+
+        # Update border subtitle based on pagination state
+        state = self.store.get("pagination_state")
+        if state and state.get("type") in ["playlist", "liked_songs"]:
+            loaded = len(tracks)
+            has_more = state.get("has_more", False)
+            total = f"{loaded}+" if has_more else str(loaded)
+
+            if state.get("type") == "playlist":
+                self.border_title = f"{Strings.TRACKS_TITLE} (Playlist • {total})"
+            else:
+                self.border_title = f"{Strings.TRACKS_TITLE} (Liked Songs • {total})"
+        else:
+            self.border_title = f"{Strings.TRACKS_TITLE} ({len(tracks)})"
+
+        # Save cursor position to restore after clear
+        saved_row = self.cursor_row
+        saved_col = self.cursor_column
+        saved_scroll_y = self.scroll_y
+        saved_scroll_x = self.scroll_x
+
         self.clear()
         self.track_data_map = {}
 
@@ -190,6 +290,15 @@ class TrackList(DataTable):
                 continue
 
         self.debug.debug("TrackList", f"Finished loading {len(self.track_data_map)} rows")
+        if saved_row is not None and len(self.track_data_map) > 0:
+            row_to_restore = min(saved_row, len(self.track_data_map) - 1)
+            saved_col = saved_col if saved_col is not None else 0
+
+            # Temporarily disable animation for a rigid snap back to previous state
+            self.move_cursor(row=row_to_restore, column=saved_col, animate=False)
+            self.scroll_y = saved_scroll_y
+            self.scroll_x = saved_scroll_x
+
         self._update_dynamic_column_widths()
         self.refresh()
 

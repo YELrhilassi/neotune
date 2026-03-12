@@ -22,6 +22,7 @@
     width: 1fr;
     height: 1;
     background: #181825;
+    content-align: center middle;
 }
 
 /* Base styling for labels */

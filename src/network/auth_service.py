@@ -57,7 +57,9 @@ class AuthService:
                 except:
                     pass
 
-                return spotipy.Spotify(auth_manager=self._auth_manager, requests_timeout=10, retries=0)
+                return spotipy.Spotify(
+                    auth_manager=self._auth_manager, requests_timeout=10, retries=0
+                )
         except Exception as e:
             msg = f"Login failed: {e}"
             logger.error(msg)
@@ -94,5 +96,17 @@ class AuthService:
     def get_access_token(self) -> Optional[str]:
         if not self._auth_manager:
             return None
+
         token_info = self._auth_manager.get_cached_token()
-        return token_info.get("access_token") if token_info else None
+        if token_info:
+            if self._auth_manager.is_token_expired(token_info):
+                try:
+                    token_info = self._auth_manager.refresh_access_token(
+                        token_info["refresh_token"]
+                    )
+                except Exception as e:
+                    self._debug.error("AuthService", f"Failed to refresh token: {e}")
+                    return None
+            return token_info.get("access_token")
+
+        return None

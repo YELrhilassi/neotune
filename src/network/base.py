@@ -2,17 +2,17 @@ from __future__ import annotations
 
 """Base class for Spotify API services."""
 
+import threading
 import time
 import uuid
-import threading
-import json
-from typing import Any, Optional, Callable, cast
-import spotipy
-from spotipy.exceptions import SpotifyException
+from collections.abc import Callable
+from typing import Any
 
-from src.core.logging_config import get_logger
-from src.core.debug_logger import DebugLogger
+import spotipy
+
 from src.core.cache import CacheStore
+from src.core.debug_logger import DebugLogger
+from src.core.logging_config import get_logger
 
 logger = get_logger("spotify_service")
 
@@ -80,7 +80,7 @@ class SpotifyServiceBase:
         default_return: Any = None,
         track_name: str | None = None,
         cache_ttl: int | None = None,
-        min_interval: float | None = 1.0,
+        min_interval: float | None = 2.0,  # Increased global throttle
         suppress_status_codes: list[int] | None = None,
         **kwargs,
     ) -> Any:
@@ -100,20 +100,29 @@ class SpotifyServiceBase:
                 return cached_val
 
         # Check Global Rate Limit
-        if time.time() < SpotifyServiceBase._rate_limit_until:
+        now = time.time()
+        if now < SpotifyServiceBase._rate_limit_until:
+            # If we are rate limited, try to return expired cache anyway as a fallback
+            if cache_ttl is not None:
+                cached_val = self._cache.get(cache_key, ignore_ttl=True)
+                if cached_val is not None:
+                    return cached_val
             return default_return
 
         if min_interval:
             with self._call_lock:
-                now = time.time()
                 last_call = self._last_call_times.get(endpoint, 0)
                 if now - last_call < min_interval:
+                    # If we are spamming, try to return cache anyway
+                    if cache_ttl is not None:
+                        cached_val = self._cache.get(cache_key, ignore_ttl=True)
+                        if cached_val is not None:
+                            return cached_val
                     return default_return
                 self._last_call_times[endpoint] = now
 
         request_id = f"req_{uuid.uuid4().hex[:8]}"
         self._debug.network_start(request_id, "API", endpoint, kwargs)
-        start_time = time.time()
 
         try:
             result = func(*args, **kwargs)
@@ -128,11 +137,21 @@ class SpotifyServiceBase:
             status = se.http_status
 
             if status == 429:
-                # Extract Retry-After or default to 5s
-                retry_after = int(se.headers.get("Retry-After", 5))
-                SpotifyServiceBase._rate_limit_until = time.time() + retry_after
+                # Extract Retry-After or default to 10s, and add a heavy safety buffer
+                retry_after = int(se.headers.get("Retry-After", 15)) + 30
+                expire_time = time.time() + retry_after
+                SpotifyServiceBase._rate_limit_until = expire_time
+
+                # Update Store for UI reactivity
+                try:
+                    from src.state.store import Store
+
+                    Store().set("rate_limit_until", expire_time)
+                except Exception:
+                    pass
+
                 self._debug.error(
-                    "Network", f"RATE LIMIT EXCEEDED (429): {se}. Retry after {retry_after}s"
+                    "Network", f"RATE LIMIT EXCEEDED (429): {se}. Global pause for {retry_after}s"
                 )
                 self._update_connectivity(False)
                 return default_return

@@ -89,6 +89,7 @@ class TerminalRenderer(App):
         self.refresh_data()
         recent = self.store.get("recently_played")
         if recent:
+            self.call_from_thread(self.store.set, "pagination_state", {})
             self.call_from_thread(self.store.set, "current_tracks", recent)
         useSwitchToLocalPlayer(self)
         self.call_from_thread(self.set_timer, 2.0, lambda: useAutoPlay(self))
