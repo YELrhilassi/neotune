@@ -44,14 +44,26 @@ def useRefreshData(app):
             if not (cached_obj and isinstance(cached_obj, dict) and time.time() - cached_obj.get("time", 0) < 86400):
                 all_playlists = []
                 offset = 0
+                consecutive_errors = 0
                 while True:
                     result = network.discovery.get_user_playlists("spotify", limit=50, offset=offset, fetch_details=False)
+                    
+                    if not result:
+                        consecutive_errors += 1
+                        if consecutive_errors > 3:
+                            debug.error("Hooks", "Failed to fetch Spotify playlists after 3 attempts.")
+                            break
+                        time.sleep(2)
+                        continue
+                        
+                    consecutive_errors = 0
                     items = result.get("items", [])
                     if not items: break
                     all_playlists.extend(items)
                     if offset + 50 >= result.get("total", 0): break
                     offset += 50
-                app.call_from_thread(store.set, cache_key, {"time": time.time(), "data": all_playlists}, persist=True)
+                if all_playlists:
+                    app.call_from_thread(store.set, cache_key, {"time": time.time(), "data": all_playlists}, persist=True)
 
 
 
@@ -109,10 +121,15 @@ def useRefreshData(app):
                         if p and isinstance(p, dict): target_playlists.append((p.get("id"), p.get("name"), "spotify"))
                 
                 for pid, pname, source in target_playlists:
+                    if getattr(app, "_exit", False) or not app.is_running:
+                        break
                     if not pid: continue
                     try:
                         pl_offset = 0
                         while True:
+                            if getattr(app, "_exit", False) or not app.is_running:
+                                break
+                                
                             pl_tracks = network.library.get_playlist_tracks(pid, limit=100, offset=pl_offset) 
                             if not pl_tracks: break
                             
@@ -143,10 +160,11 @@ def useRefreshData(app):
                             
                         time.sleep(0.5)
                     except Exception as e:
-                        debug.warning("Hooks", f"Failed to prefetch tracks for {pname}: {e}")
+                        pass
                         
-                # Final save
-                app.call_from_thread(store.set, tracks_cache_key, {"time": time.time(), "data": all_tracks}, persist=True)
+                if not getattr(app, "_exit", False) and app.is_running:
+                    # Final save
+                    app.call_from_thread(store.set, tracks_cache_key, {"time": time.time(), "data": all_tracks}, persist=True)
 
 
 

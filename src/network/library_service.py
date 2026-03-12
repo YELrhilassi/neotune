@@ -32,6 +32,7 @@ class LibraryService(SpotifyServiceBase):
         
         all_playlists = []
         offset = 0
+        consecutive_errors = 0
         while True:
             result = self._safe_api_call(
                 self.sp.current_user_playlists,
@@ -42,12 +43,22 @@ class LibraryService(SpotifyServiceBase):
                 cache_ttl=43200, # Half a day
                 min_interval=0.0
             )
-            items = result.get("items", []) if result else []
+            
+            if not result:
+                consecutive_errors += 1
+                if consecutive_errors > 3:
+                    break
+                import time
+                time.sleep(2)
+                continue
+                
+            consecutive_errors = 0
+            items = result.get("items", [])
             if not items:
                 break
             all_playlists.extend(items)
             
-            total = result.get("total", 0) if result else 0
+            total = result.get("total", 0)
             if offset + 50 >= total:
                 break
             offset += 50
@@ -66,6 +77,7 @@ class LibraryService(SpotifyServiceBase):
             track_name="playlist_items",
             cache_ttl=60,
             min_interval=0.0,
+            suppress_status_codes=[404, 403, 400],
         )
         return result.get("items", []) if result else []
 

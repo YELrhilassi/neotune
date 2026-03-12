@@ -105,26 +105,38 @@ class SpotifyServiceBase:
 
         try:
             result = func(*args, **kwargs)
-            duration_ms = (time.time() - start_time) * 1000
-            self._update_connectivity(True)
-            self._debug.network_end(request_id, status_code=200, size=0, body=result)
-            self._debug.track_performance(endpoint, duration_ms)
-
+            
+            # Cache the new result
             if cache_ttl is not None:
-                cache_key = f"api:{endpoint}:{args}:{kwargs}"
                 self._cache.set(cache_key, result, ttl=cache_ttl)
-
+                
+            self._debug.network_end(
+                request_id,
+                time.time() - start_time,
+                True,
+                {"result_type": type(result).__name__},
+            )
             return result
-        except SpotifyException as e:
+        except spotipy.SpotifyException as se:
             duration_ms = (time.time() - start_time) * 1000
-            status_code = getattr(e, "http_status", None)
+            status = se.http_status
+            
+            if status == 429:
+                self._debug.error("Network", f"RATE LIMIT EXCEEDED (429): {se}")
+                self._update_connectivity(False)
+                return default_return
+                
+            if status in [404, 403]:
+                # Don't cache 404s/403s if they are expected occasionally
+                if suppress_status_codes and status in suppress_status_codes:
+                    pass # Don't log spam
+                else:
+                    self._debug.error("Network", f"Spotify API error ({endpoint}): {se}")
+                return default_return
+
+            self._debug.error("Network", f"Spotify API error ({endpoint}): {se}")
             self._update_connectivity(False)
-
-            should_suppress = suppress_status_codes and status_code in suppress_status_codes
-            if not should_suppress:
-                self._debug.error("Network", f"Spotify API error ({endpoint}): {e}")
-
-            self._debug.network_end(request_id, error=str(e), status_code=status_code)
+            self._debug.network_end(request_id, error=str(se))
             self._debug.track_performance(endpoint, duration_ms)
             return default_return
         except Exception as e:

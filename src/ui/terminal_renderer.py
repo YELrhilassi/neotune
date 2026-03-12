@@ -309,6 +309,7 @@ class TerminalRenderer(App):
 
     def on_unmount(self) -> None:
         self._is_running = False
+        self._exit = True
 
     def action_play_pause(self) -> None:
         self.command_service.execute("play_pause", self)
