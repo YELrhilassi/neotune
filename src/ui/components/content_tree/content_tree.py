@@ -8,6 +8,7 @@ from src.core.di import Container
 from src.state.store import Store
 from src.network.spotify_network import SpotifyNetwork
 from src.core.utils import strip_icons
+from src.core.icons import Icons
 from src.ui.components.content_tree.tree_nodes import (
     CollectionBranch,
     PlaylistsBranch,
@@ -33,7 +34,7 @@ class ContentTree(Tree):
         self._last_build_data = {}
 
     def on_mount(self):
-        # Subscribe to unified Store keys for navigation updates
+        # Subscribe to Store keys for navigation updates
         self.store.subscribe("playlists", lambda val, **kw: self._reactive_refresh())
         self.store.subscribe("browse_metadata", lambda val, **kw: self._reactive_refresh())
         self.store.subscribe("special_playlists", lambda val, **kw: self._reactive_refresh())
@@ -44,8 +45,6 @@ class ContentTree(Tree):
         if states and self.app:
             new_loading = states.get("sidebar", False)
             if self.loading != new_loading:
-                import threading
-
                 if threading.current_thread() is threading.main_thread():
                     self.loading = new_loading
                 else:
@@ -54,13 +53,22 @@ class ContentTree(Tree):
     def _reactive_refresh(self):
         if not self.app:
             return
+
+        # Check if data changed to avoid flicker
+        new_data = {
+            "playlists": self.store.get("playlists"),
+            "browse_metadata": self.store.get("browse_metadata"),
+            "special_playlists": self.store.get("special_playlists"),
+        }
+        if new_data == self._last_build_data:
+            return
+        self._last_build_data = new_data
+
         if self._refresh_timer:
             self._refresh_timer.cancel()
 
         def _deferred():
             try:
-                import threading
-
                 if threading.current_thread() is threading.main_thread():
                     self.refresh_tree()
                 else:
@@ -122,7 +130,6 @@ class ContentTree(Tree):
             self._restore_expansion(child, expanded_ids)
 
     def _select_node_by_id(self, node: TreeNode, node_id: str) -> bool:
-        # Fix: Check for exact match against node data IDs
         data = node.data
         if data and data.get("id") == node_id:
             self.select_node(node)
@@ -163,112 +170,103 @@ class ContentTree(Tree):
 
     @work(exclusive=True, thread=True)
     def load_spotify_user_playlists_to_table(self, user_id: str):
+        """
+        Loads all playlists for a user (like 'spotify') and displays them in the main table.
+        """
         import time
+        import re
+        import datetime
 
-        def _update_ui_with_playlists(pl_list, focus=False):
-            import re
-            import datetime
-
+        def _render(pl_list):
             current_year = datetime.datetime.now().year
 
             def get_sort_key(pl):
-                name = pl.get("name", "")
-                if not name:
-                    return (3, "")
-                lname = name.lower()
-
-                match = re.search(r"\b(19|20)\d{2}\b", lname)
+                name = pl.get("name", "").lower()
+                match = re.search(r"\b(19|20)\d{2}\b", name)
                 year = int(match.group()) if match else None
-
-                if "top" in lname:
+                if "top" in name:
                     if year == current_year:
-                        return (1, lname)
-                    elif year is None:
-                        return (2, lname)
-                    else:
-                        # "top" with an old year -> don't prioritize it at the top
-                        return (3, lname)
-                else:
-                    return (3, lname)
+                        return (1, name)
+                    if year is None:
+                        return (2, name)
+                    return (4, name)
+                return (3, name)
 
             sorted_pls = sorted(pl_list, key=get_sort_key)
-
-            # Map to context list for TrackList
-            tracks = []
-            for pl in sorted_pls:
-                if pl and isinstance(pl, dict):
-                    tracks.append(
-                        {
-                            "type": "context",
-                            "context_type": "playlist",
-                            "uri": pl.get("uri"),
-                            "name": pl.get("name"),
-                            "metadata": {"artists": ""},
-                        }
-                    )
-
+            tracks = [
+                {
+                    "type": "context",
+                    "context_type": "playlist",
+                    "uri": pl.get("uri"),
+                    "name": pl.get("name"),
+                    "metadata": {"artists": ""},
+                }
+                for pl in sorted_pls
+                if pl and isinstance(pl, dict)
+            ]
             self.app.call_from_thread(self.store.set, "current_tracks", tracks)
-            if focus:
-                self.app.call_from_thread(
-                    self.store.set, "last_active_context", "spotify_playlists", persist=True
-                )
-                self.app.call_from_thread(lambda: self.app.query_one("TrackList").focus())
 
         try:
+            # 1. Update UI loading state
             current_l = self.store.get("loading_states") or {}
             self.app.call_from_thread(
                 self.store.set, "loading_states", {**current_l, "track_list": True}
             )
 
-            cache_key = f"all_user_playlists_{user_id}"
+            # 2. Check Persistent Cache (Source of Truth)
+            cache_key = (
+                "prefetch:spotify_playlists"
+                if user_id == "spotify"
+                else f"prefetch:all_user_playlists_{user_id}"
+            )
+            from src.core.cache import CacheStore
 
-            # Check for a valid cache within the last 24 hours
-            cached_obj = self.store.get(cache_key)
-            cached_playlists = None
-            if cached_obj and isinstance(cached_obj, dict):
+            cache = CacheStore(enable_disk=True)
+            cached_obj = cache.get(cache_key)
+
+            if cached_obj and isinstance(cached_obj, dict) and cached_obj.get("data"):
+                _render(cached_obj["data"])
+                # Return immediately if cache is fresh enough
                 if time.time() - cached_obj.get("time", 0) < 86400:
-                    cached_playlists = cached_obj.get("data")
+                    return
 
-            if cached_playlists:
-                _update_ui_with_playlists(cached_playlists, focus=True)
-            else:
-                all_playlists = []
-                offset = 0
-                is_first = True
-                while True:
-                    # To prevent blocking the UI completely, maybe we log fetching
+            # 3. Fetch from API
+            all_playlists = []
+            offset = 0
+            while True:
+                if getattr(self.app, "_exit", False) or not self.app.is_running:
+                    break
 
-                    result = self.network.discovery.get_user_playlists(
-                        user_id, limit=50, offset=offset, fetch_details=False
-                    )
-                    items = result.get("items", [])
-                    if not items:
-                        break
+                result = self.network.discovery.get_user_playlists(user_id, limit=50, offset=offset)
+                items = result.get("items", [])
+                if not items:
+                    break
 
-                    all_playlists.extend(items)
+                all_playlists.extend(items)
+                _render(all_playlists)  # Incremental update
 
-                    # Update UI incrementally
-                    _update_ui_with_playlists(all_playlists, focus=is_first)
-                    is_first = False
+                if offset + 50 >= result.get("total", 0):
+                    break
+                offset += 50
+                time.sleep(1.0)  # Gentle
 
-                    total = result.get("total", 0)
-                    if offset + 50 >= total:
-                        break
-                    offset += 50
+            # 4. Save to Cache
+            if all_playlists:
+                cache.set(cache_key, {"time": time.time(), "data": all_playlists}, ttl=86400)
 
-                # Cache for 1 day persistently
-                self.app.call_from_thread(
-                    self.store.set,
-                    cache_key,
-                    {"time": time.time(), "data": all_playlists},
-                    persist=True,
-                )
+        except Exception as e:
+            from src.core.debug_logger import DebugLogger
 
+            DebugLogger().error("ContentTree", f"Failed to load Spotify user playlists: {e}")
         finally:
             current_l = self.store.get("loading_states") or {}
             self.app.call_from_thread(
                 self.store.set, "loading_states", {**current_l, "track_list": False}
             )
+            self.app.call_from_thread(
+                self.store.set, "last_active_context", "spotify_playlists", persist=True
+            )
+            self.app.call_from_thread(lambda: self.app.query_one("TrackList").focus())
 
     @work(exclusive=True, thread=True)
     def load_category_playlists(self, node: TreeNode, category_id: str, category_name: str = ""):
@@ -382,7 +380,6 @@ class ContentTree(Tree):
 
         debug = DebugLogger()
         try:
-            debug.info("ContentTree", "Loading recently played")
             current_l = self.store.get("loading_states") or {}
             self.app.call_from_thread(
                 self.store.set, "loading_states", {**current_l, "track_list": True}
@@ -392,7 +389,6 @@ class ContentTree(Tree):
 
             activity_svc = Container.resolve(ActivityService)
             combined = activity_svc.get_combined_history(api_tracks)
-            debug.debug("ContentTree", f"Fetched {len(combined)} recent items")
             self.app.call_from_thread(self.store.set, "current_tracks", combined)
             self.app.call_from_thread(
                 self.store.set, "last_active_context", "recently_played", persist=True
@@ -412,13 +408,11 @@ class ContentTree(Tree):
 
         debug = DebugLogger()
         try:
-            debug.info("ContentTree", "Loading liked songs")
             current_l = self.store.get("loading_states") or {}
             self.app.call_from_thread(
                 self.store.set, "loading_states", {**current_l, "track_list": True}
             )
             tracks = self.network.library.get_liked_songs()
-            debug.debug("ContentTree", f"Fetched {len(tracks)} liked songs")
             self.app.call_from_thread(self.store.set, "current_tracks", tracks)
             self.app.call_from_thread(
                 self.store.set, "last_active_context", "liked_songs", persist=True
@@ -438,31 +432,11 @@ class ContentTree(Tree):
 
         debug = DebugLogger()
         try:
-            debug.info("ContentTree", f"Loading tracks for playlist {playlist_id}")
             current_l = self.store.get("loading_states") or {}
             self.app.call_from_thread(
                 self.store.set, "loading_states", {**current_l, "track_list": True}
             )
-
-            raw_tracks = self.network.library.get_playlist_tracks(playlist_id)
-            
-            # The TrackTable expects an array of tracks. 
-            # When we use get_playlist_tracks it sometimes wraps them in a `{"track": {...}}` dict.
-            tracks = []
-            for t in raw_tracks:
-                if t and isinstance(t, dict):
-                    # DO NOT use just the inner track object because TrackTable explicitly looks for `item.get("track") if "track" in item else item`
-                    # BUT wait... if it expects `item.get("track")` then passing the raw `t` is correct.
-                    tracks.append(t)
-
-            if not tracks:
-                debug.error(
-                    "ContentTree",
-                    f"Failed to fetch tracks for playlist {playlist_id} or playlist is empty (404/Private algorithmic list)",
-                )
-
-            debug.debug("ContentTree", f"Fetched {len(tracks)} tracks")
-
+            tracks = self.network.library.get_playlist_tracks(playlist_id)
             self.app.call_from_thread(self.store.set, "current_tracks", tracks)
             self.app.call_from_thread(
                 self.store.set,

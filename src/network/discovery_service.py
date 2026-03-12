@@ -269,9 +269,10 @@ class DiscoveryService(SpotifyServiceBase):
             track_name="user_playlists_discovery",
             cache_ttl=86400,
             min_interval=0.0,
+            default_return=None,
         )
-        if not result:
-            return {"items": [], "total": 0, "offset": 0}
+        if result is None:
+            return {"items": [], "total": 0, "offset": offset}
 
         items = result.get("items", [])
 
@@ -285,40 +286,6 @@ class DiscoveryService(SpotifyServiceBase):
         """Resolve Stations or Algorithmic Playlists into track URIs."""
         if not uri or not self.sp:
             return []
-
-        if ":station:" in uri:
-            parts = uri.split(":")
-            seed_id = parts[-1]
-            if "track" in parts:
-                return [
-                    t["uri"]
-                    for t in self.get_recommendations(seed_tracks=[seed_id])
-                    if t.get("uri")
-                ]
-            elif "artist" in parts:
-                return [
-                    t["uri"]
-                    for t in self.get_recommendations(seed_artists=[seed_id])
-                    if t.get("uri")
-                ]
-
-        if ":playlist:" in uri:
-            try:
-                res = self._safe_api_call(
-                    self.sp.playlist_items,
-                    uri.split(":")[-1],
-                    limit=100,
-                    suppress_status_codes=[404, 403],
-                )
-                if res and res.get("items"):
-                    return [
-                        i["track"]["uri"]
-                        for i in res["items"]
-                        if i.get("track") and i["track"].get("uri")
-                    ]
-            except:
-                pass
-        return []
 
         if ":station:" in uri:
             parts = uri.split(":")

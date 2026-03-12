@@ -44,8 +44,6 @@ class TrackList(DataTable):
     def _handle_ui_change(self, states):
         self._handle_loading(states)
 
-
-
     def on_resize(self, event: events.Resize):
         self.app.call_later(self._update_dynamic_column_widths)
 
@@ -54,19 +52,19 @@ class TrackList(DataTable):
         if len(cols) != 4:
             return
 
-        total_w = max(10, self.size.width - 2) # account for borders/padding
+        total_w = max(10, self.size.width - 2)  # account for borders/padding
 
         cols[3].auto_width = False
         cols[3].width = max(8, cols[3].content_width)
-        
-        remaining = max(5, total_w - cols[3].width - 6) # approx 6 chars for column spacing
-        
+
+        remaining = max(5, total_w - cols[3].width - 6)  # approx 6 chars for column spacing
+
         c0_w = max(len("Track") + 2, cols[0].content_width)
         c1_w = max(len("Artist") + 2, cols[1].content_width)
         c2_w = max(len("Album") + 2, cols[2].content_width)
-        
+
         sum_c = c0_w + c1_w + c2_w
-        
+
         if sum_c > 0:
             cols[0].width = max(len("Track") + 2, int(remaining * (c0_w / sum_c)))
             cols[1].width = max(len("Artist") + 2, int(remaining * (c1_w / sum_c)))
@@ -74,7 +72,7 @@ class TrackList(DataTable):
 
         for c in cols[:3]:
             c.auto_width = False
-            
+
         self.refresh()
 
     def safe_load_tracks(self, tracks: list):
@@ -108,13 +106,22 @@ class TrackList(DataTable):
         )
         self.clear()
         self.track_data_map = {}
-        
+
         # Reset columns to auto_width to let them shrink based on new content
         for c in self.columns.values():
             c.auto_width = True
             c.content_width = len(c.label.plain)
 
         if not tracks:
+            # Enhanced empty state
+            loading = self.store.get("loading_states", {}).get("track_list", False)
+            if not loading:
+                self.add_row(
+                    f"{Icons.INFO} No content found",
+                    "Try a different playlist",
+                    "or check your connection",
+                    "-",
+                )
             self._update_dynamic_column_widths()
             self.refresh()
             return
@@ -148,7 +155,7 @@ class TrackList(DataTable):
                     track = item["track"]
                 else:
                     track = item
-                
+
                 if not track or not isinstance(track, dict) or "name" not in track:
                     continue
 
@@ -185,7 +192,6 @@ class TrackList(DataTable):
         self.debug.debug("TrackList", f"Finished loading {len(self.track_data_map)} rows")
         self._update_dynamic_column_widths()
         self.refresh()
-
 
     def focus_item_by_uri(self, uri: str):
         # Find the row index and move cursor

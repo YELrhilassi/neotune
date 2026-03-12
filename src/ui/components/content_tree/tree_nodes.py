@@ -44,6 +44,7 @@ class PlaylistsBranch(BaseBranch):
     """Handles the user's personal playlists group."""
 
     def build(self):
+        # Single source of truth from Store
         playlists = self.store.get("playlists") or []
 
         pl_root = self.root.add(
@@ -53,13 +54,23 @@ class PlaylistsBranch(BaseBranch):
         )
 
         if not playlists:
+            loading = self.store.get("loading_states", {}).get("sidebar", False)
+            if not loading:
+                pl_root.add_leaf(f"{Icons.INFO} [dim]No playlists found[/]")
             return
 
         seen_names: Dict[str, int] = {}
         for pl in playlists:
-            if not isinstance(pl, dict):
+            if not pl or not isinstance(pl, dict):
                 continue
-            name = strip_icons(pl.get("name", "")) or "Untitled"
+
+            pl_id = pl.get("id")
+            pl_name = pl.get("name", "Untitled")
+
+            if not pl_id:
+                continue
+
+            name = strip_icons(pl_name) or "Untitled"
             if name in seen_names:
                 seen_names[name] += 1
                 display_name = f"{name} ({seen_names[name]})"
@@ -67,7 +78,7 @@ class PlaylistsBranch(BaseBranch):
                 display_name = name
                 seen_names[name] = 1
 
-            pl_root.add_leaf(display_name, data={"type": "playlist", "id": pl.get("id")})
+            pl_root.add_leaf(display_name, data={"type": "playlist", "id": pl_id})
 
 
 class DiscoveryBranch(BaseBranch):
@@ -82,12 +93,6 @@ class DiscoveryBranch(BaseBranch):
             f"{Icons.SEARCH} Discovery",
             expand=True,
             data={"type": "group", "id": "discovery_group"},
-        )
-
-        # 1. Featured (Leaf - loads picks into main area)
-        disc_root.add_leaf(
-            f"{Icons.STAR} Featured",
-            data={"type": "featured_hub", "id": "featured_leaf"},
         )
 
         # 2. Spotify Playlists (Leaf - loads to main area)

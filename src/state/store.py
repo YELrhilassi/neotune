@@ -68,6 +68,8 @@ class Store:
             "last_active_node_id",
             "preferred_device_id",
             "preferred_device_name",
+            "playlists",
+            "browse_metadata",
         }
 
         self._state_lock = threading.RLock()
