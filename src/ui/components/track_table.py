@@ -28,7 +28,7 @@ class TrackList(DataTable):
         Binding("shift+u", "page_up", "Page Up", show=True),
         Binding("D", "page_down", "Page Down", show=False),
         Binding("U", "page_up", "Page Up", show=False),
-        Binding("q", "add_queue", "Add to Queue", show=False),
+        Binding("a", "add_queue", "Add to Queue", show=False),
         Binding("x", "remove_queue", "Remove from Queue", show=False),
         Binding("delete", "remove_queue", "Remove from Queue", show=False),
     ]

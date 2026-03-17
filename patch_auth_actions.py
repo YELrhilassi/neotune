@@ -1,25 +1,16 @@
-"""Authentication-related actions."""
+import re
 
-import shutil
-from pathlib import Path
-from typing import Any
+with open("src/actions/auth_actions.py", "r") as f:
+    code = f.read()
 
-from src.core.di import Container
-from src.core.constants import Paths
-from src.core.logging_config import get_logger
-from src.core.debug_logger import DebugLogger
-from src.network.local_player import LocalPlayer
-
-logger = get_logger("auth_actions")
-
-
-
+# We want to replace the body of logout
+new_logout = """
 def logout(app: Any) -> None:
-    """Perform full logout: stop player, clear caches, remove credentials.
+    \"\"\"Perform full logout: stop player, clear caches, remove credentials.
 
     Args:
         app: Application instance with notify and exit methods
-    """
+    \"\"\"
     from src.ui.modals.confirmation import ConfirmationModal
 
     def _on_confirm(confirmed: bool):
@@ -67,3 +58,9 @@ def logout(app: Any) -> None:
             app.notify(f"Logout failed: {e}", severity="error")
 
     app.push_screen(ConfirmationModal("Are you sure you want to logout and clear session?"), _on_confirm)
+"""
+
+code = re.sub(r'def logout\(app: Any\) -> None:.*', new_logout, code, flags=re.DOTALL)
+
+with open("src/actions/auth_actions.py", "w") as f:
+    f.write(code)
