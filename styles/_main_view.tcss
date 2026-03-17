@@ -26,7 +26,7 @@
 }
 
 #queue-panel {
-    width: 35;
+    width: 45;
     height: 1fr;
     dock: right;
     border: round $panel;

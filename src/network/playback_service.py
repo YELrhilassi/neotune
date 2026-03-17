@@ -1,11 +1,13 @@
 """Service for managing Spotify playback and devices."""
 
-import time
 import threading
-from typing import Optional, Any, Dict, List, Callable
+import time
+from collections.abc import Callable
+from typing import Any
+
 from src.core.constants import PlayerSettings
-from src.network.base import SpotifyServiceBase
 from src.core.di import Container
+from src.network.base import SpotifyServiceBase
 
 
 class PlaybackService(SpotifyServiceBase):
@@ -21,7 +23,7 @@ class PlaybackService(SpotifyServiceBase):
         self._devices_cache_ttl = 5.0
         self._lock = threading.Lock()
 
-    def get_current_playback(self, force: bool = False) -> Optional[dict[str, Any]]:
+    def get_current_playback(self, force: bool = False) -> dict[str, Any] | None:
         if not self.sp:
             return self._last_playback_state
         with self._lock:
@@ -154,7 +156,7 @@ class PlaybackService(SpotifyServiceBase):
                     pass
             return self._last_devices
 
-    def find_fallback_device(self) -> Optional[str]:
+    def find_fallback_device(self) -> str | None:
         devices = self.get_devices()
         if not devices:
             return None
@@ -181,9 +183,9 @@ class PlaybackService(SpotifyServiceBase):
     def play_track(
         self,
         track_uri: Any,
-        device_id: Optional[str] = None,
-        context_uri: Optional[str] = None,
-        offset_position: Optional[int] = None,
+        device_id: str | None = None,
+        context_uri: str | None = None,
+        offset_position: int | None = None,
     ):
         if not self.sp:
             return
@@ -212,9 +214,13 @@ class PlaybackService(SpotifyServiceBase):
                 pass
         if isinstance(track_uri, str):
             if ":track:" in track_uri:
-                params["uris"] = [track_uri]
-                if "offset" not in params:
-                    params["offset"] = {"uri": track_uri}
+                if "context_uri" in params:
+                    if "offset" not in params:
+                        params["offset"] = {"uri": track_uri}
+                else:
+                    params["uris"] = [track_uri]
+                    if "offset" not in params:
+                        params["offset"] = {"uri": track_uri}
             else:
                 params["context_uri"] = track_uri
         elif isinstance(track_uri, list):
