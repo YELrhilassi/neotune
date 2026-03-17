@@ -95,6 +95,8 @@ class WhichKeyPopup(BaseModal):
             "System": [
                 ("ctrl+l", "Show Debug Logs"),
                 ("?", "Show Which Key"),
+                ("e", "Toggle Sidebar"),
+                ("l", "Toggle Queue UI"),
             ],
         }
         pages.append(page3)

@@ -1,6 +1,6 @@
-from pathlib import Path
 import os
-import lupa
+from pathlib import Path
+
 from lupa import LuaRuntime
 
 
@@ -33,6 +33,7 @@ class UserPreferences:
             ":": {"action": "command_prompt", "desc": "Command Mode"},
             "/": {"action": "search_prompt", "desc": "Search Tracks/Playlists"},
             "s": {"action": "fuzzy_search", "desc": "Fuzzy Search App Content"},
+            "l": {"action": "toggle_queue", "desc": "Toggle Queue UI"},
         }
 
         self.commands = {}
@@ -111,20 +112,20 @@ class UserPreferences:
     def load(self):
         # Ensure config dir exists
         os.makedirs(self.config_dir, exist_ok=True)
-        
+
         # Internal lua files path
         internal_lua_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "lua")
-        
+
         # Always run the internal init first as base
         internal_init = os.path.join(internal_lua_dir, "init.lua")
-        
-        # We need to tell lupa where to find the require files. 
+
+        # We need to tell lupa where to find the require files.
         # By default lupa uses package.path
         setup_paths_lua = f"""
         package.path = "{internal_lua_dir}/?.lua;" .. package.path
         """
         self.lua.execute(setup_paths_lua)
-        
+
         if os.path.exists(internal_init):
             try:
                 self.lua.require("init")
@@ -134,13 +135,13 @@ class UserPreferences:
 
         # Then let user override with their own init.lua if it exists
         user_init = os.path.join(self.config_dir, "init.lua")
-        
+
         if os.path.exists(user_init):
             setup_user_paths = f"""
             package.path = "{self.config_dir}/?.lua;" .. package.path
             """
             self.lua.execute(setup_user_paths)
-            
+
             try:
                 # Use dofile to execute the exact user init.lua without caching conflicts
                 self.lua.execute(f'dofile("{user_init}")')
@@ -307,7 +308,7 @@ class UserPreferences:
                 # Extract debug config
                 lua_debug = getattr(tui_api, "debug", None)
                 if lua_debug:
-                    from src.core.debug_logger import DebugLogger, DebugConfig
+                    from src.core.debug_logger import DebugConfig, DebugLogger
 
                     debug_config = DebugConfig()
                     debug_config.from_lua(dict(lua_debug))

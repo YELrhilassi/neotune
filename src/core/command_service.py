@@ -2,18 +2,16 @@
 
 import threading
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, cast
+from typing import Any
 
+from src.actions.auth_actions import logout
+from src.config.user_prefs import UserPreferences
+from src.core.debug_logger import DebugLogger
 from src.core.di import Container
 from src.core.logging_config import get_logger
-from src.core.debug_logger import DebugLogger
-from src.state.store import Store
-from src.network.spotify_network import SpotifyNetwork
-from src.config.user_prefs import UserPreferences
-from src.network.local_player import LocalPlayer
 from src.hooks.usePlayTrack import usePlayTrack as play_track
-from src.actions.auth_actions import logout
-from src.actions.health_check import perform_health_check
+from src.network.local_player import LocalPlayer
+from src.network.spotify_network import SpotifyNetwork
 
 logger = get_logger("commands")
 
@@ -26,7 +24,7 @@ class Command(ABC):
 
 class CommandRegistry:
     def __init__(self) -> None:
-        self._commands: Dict[str, Command] = {}
+        self._commands: dict[str, Command] = {}
         self.debug_logger = DebugLogger()
 
     def register(self, name: str, command: Command) -> None:
@@ -39,7 +37,7 @@ class CommandRegistry:
         self.debug_logger.info("Commands", f"Executing: {name}")
         self._commands[name].execute(app_instance, *args, **kwargs)
 
-    def get_command_names(self) -> List[str]:
+    def get_command_names(self) -> list[str]:
         return list(self._commands.keys())
 
 
@@ -294,7 +292,7 @@ class FuzzySearchCommand(Command):
                                     p.expand()
                                     p = p.parent
                                 ct.scroll_to_node(target)
-                        except Exception as e:
+                        except Exception:
                             pass
 
                     if item_type in ["playlist", "context"]:
@@ -342,7 +340,7 @@ class FuzzySearchCommand(Command):
                         )
                         display_name = f"{item.get('name', 'Unknown')} by {artists}"
 
-                        def on_track_action_selected(action: Optional[str]):
+                        def on_track_action_selected(action: str | None):
                             if not action:
                                 return
 
@@ -477,7 +475,14 @@ class ThemeSelectorCommand(Command):
         app.safe_push_screen(ThemeSelector(prefs.theme), _on_theme_selected)
 
 
+
+class ToggleQueueCommand(Command):
+    def execute(self, app, *args, **kwargs):
+        is_visible = app.store.get("queue_visible", False)
+        app.store.set("queue_visible", not is_visible)
+
 class CommandService:
+
     def __init__(self):
         self.registry = CommandRegistry()
         self._register_defaults()
@@ -493,7 +498,10 @@ class CommandService:
             ("show_device", ShowDeviceCommand()),
             ("show_audio", ShowAudioCommand()),
             ("search_prompt", SearchCommand()),
+
             ("fuzzy_search", FuzzySearchCommand()),
+            ("toggle_queue", ToggleQueueCommand()),
+
             ("restart_daemon", RestartDaemonCommand()),
             ("command_prompt", CommandPromptCommand()),
             ("theme_selector", ThemeSelectorCommand()),

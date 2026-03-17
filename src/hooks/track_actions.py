@@ -104,6 +104,15 @@ def add_to_queue(track_uri: str, app):
 
         if app and hasattr(app, "notify"):
             app.call_from_thread(app.notify, "Added to queue")
+            
+        # Refresh queue if visible
+        store = Store()
+        if store.get("queue_visible"):
+            def _refresh_q():
+                q = network.get_queue()
+                store.set("queue", q)
+            import threading
+            threading.Thread(target=_refresh_q, daemon=True).start()
     except Exception:
         pass
 
@@ -116,5 +125,13 @@ def remove_from_queue(track_uri: str, app):
 
         if app and hasattr(app, "notify"):
             app.call_from_thread(app.notify, "Removed from queue")
+        store = Store()
+        if store.get("queue_visible"):
+            def _refresh_q():
+                network = Container.resolve(SpotifyNetwork)
+                q = network.get_queue()
+                store.set("queue", q)
+            import threading
+            threading.Thread(target=_refresh_q, daemon=True).start()
     except Exception:
         pass

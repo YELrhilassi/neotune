@@ -24,3 +24,25 @@
 #track-list:focus {
     border: round $primary;
 }
+
+#queue-panel {
+    width: 35;
+    height: 1fr;
+    dock: right;
+    border: round $panel;
+    display: none;
+}
+
+#queue-panel.-visible {
+    display: block;
+}
+
+#queue-panel:focus {
+    border: round $primary;
+}
+
+#queue-table {
+    height: 1fr;
+    width: 1fr;
+    background: $background;
+}

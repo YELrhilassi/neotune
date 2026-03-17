@@ -1,16 +1,16 @@
 import threading
 import time
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Set, cast
+from typing import TYPE_CHECKING, Any, Literal
 
 from spotipy.oauth2 import SpotifyOauthError
-from textual import events, on, work
+from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
 
 from src.config.user_prefs import UserPreferences
 from src.core.command_service import CommandService
-from src.core.debug_logger import DebugLogger, LogLevel
+from src.core.debug_logger import DebugLogger
 from src.core.di import Container
 from src.hooks.useAutoPlay import useAutoPlay
 from src.hooks.useEnsureActiveDevice import useEnsureActiveDevice
@@ -19,7 +19,6 @@ from src.hooks.useSwitchToLocalPlayer import useSwitchToLocalPlayer
 from src.hooks.useUpdateNowPlaying import useUpdateNowPlaying
 from src.network.local_player import LocalPlayer
 from src.network.spotify_network import SpotifyNetwork
-from src.state.pubsub import PubSub
 from src.state.store import Store
 from src.ui.components.now_playing import NowPlaying
 from src.ui.components.sidebar import SidebarPanels
@@ -29,8 +28,7 @@ from src.ui.modals.which_key import WhichKeyPopup
 from src.ui.themes import THEMES
 
 if TYPE_CHECKING:
-    from textual.screen import Screen
-    from textual.widget import Widget
+    pass
 
 SeverityLevel = Literal["information", "warning", "error"]
 
@@ -192,6 +190,8 @@ class TerminalRenderer(App):
         with Horizontal(id="main-container"):
             yield SidebarPanels(id="sidebar")
             yield TrackList(id="track-list")
+            from src.ui.components.queue_panel import QueuePanel
+            yield QueuePanel(id="queue-panel")
         yield StatusBar(id="status-bar")
 
     @work(exclusive=True, thread=True)
@@ -299,7 +299,6 @@ class TerminalRenderer(App):
 
     def _adjust_volume(self, delta: int):
         """Adjust volume by delta percent."""
-        import threading
 
         def _worker():
             try:
@@ -325,7 +324,6 @@ class TerminalRenderer(App):
 
     def _toggle_mute(self):
         """Toggle mute/unmute."""
-        import threading
 
         def _worker():
             try:
@@ -354,7 +352,7 @@ class TerminalRenderer(App):
                         pass
                 device["volume_percent"] = new_vol
                 self.call_from_thread(self.store.set, "current_playback", playback)
-            except Exception as e:
+            except Exception:
                 pass
 
         threading.Thread(target=_worker, daemon=True).start()
