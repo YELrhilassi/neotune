@@ -1,6 +1,7 @@
 from textual.app import ComposeResult
-from textual.widgets import Label, OptionList
 from textual.containers import Middle
+from textual.widgets import Label, OptionList
+
 from src.ui.modals.base import BaseModal
 
 
@@ -39,6 +40,8 @@ class TrackMenuPopup(BaseModal[str]):
                     ("Start Track Radio", "radio"),
                     ("Save to Liked Songs", "save"),
                     ("Remove from Liked Songs", "remove"),
+                    ("Add to Queue", "add_queue"),
+                    ("Remove from Queue", "remove_queue"),
                 ]
             )
 

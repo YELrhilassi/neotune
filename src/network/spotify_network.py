@@ -161,3 +161,9 @@ class SpotifyNetwork:
 
     def search(self, query, qtype="track,playlist,album", limit=50) -> list[dict[str, Any]]:
         return self.discovery.search(query, qtype, limit)
+
+    def get_queue(self) -> dict[str, Any]:
+        return self.playback.get_queue()
+
+    def add_to_queue(self, uri: str) -> bool:
+        return self.playback.add_to_queue(uri)

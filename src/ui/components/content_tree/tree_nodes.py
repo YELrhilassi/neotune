@@ -21,6 +21,12 @@ class CollectionBranch(BaseBranch):
     """Handles the user's primary collection entries (Made For You, Liked, Recent)."""
 
     def build(self):
+        # 0. Up Next / Queue (Leaf)
+        self.root.add_leaf(
+            f"{Icons.PLAYLIST} Up Next",
+            data={"type": "queue", "id": "queue_leaf"},
+        )
+
         # 1. Made For You (Leaf - Exactly as requested, no username)
         self.root.add_leaf(
             f"{Icons.HEART} Made For You",

@@ -1,15 +1,15 @@
-import json
-import os
-import threading
 import copy
+import json
+import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Dict, Any, List, Set, Optional
+from typing import Any
+
 from src.state.pubsub import PubSub
 
 
 class Store:
-    """
-    Centralized, thread-safe, and reactive state store.
+    """Centralized, thread-safe, and reactive state store.
     Uses pypubsub for instant notifications across the application.
     """
 
@@ -30,7 +30,7 @@ class Store:
         self.config_dir = Path.home() / ".config" / "neotune"
         self.state_file = self.config_dir / "state.json"
 
-        self._state: Dict[str, Any] = {
+        self._state: dict[str, Any] = {
             "playlists": [],
             "featured_playlists": [],
             "recently_played": [],
@@ -70,6 +70,7 @@ class Store:
             "preferred_device_name",
             "playlists",
             "browse_metadata",
+            "skipped_uris",
         }
 
         self._state_lock = threading.RLock()
@@ -80,7 +81,7 @@ class Store:
     def _load_persistent_state(self):
         if self.state_file.exists():
             try:
-                with open(self.state_file, "r") as f:
+                with open(self.state_file) as f:
                     data = json.load(f)
                     with self._state_lock:
                         for k in self._persistent_keys:

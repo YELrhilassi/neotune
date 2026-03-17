@@ -1,22 +1,24 @@
 import uuid
-from typing import Dict, Any, List, Optional, cast, TYPE_CHECKING
-from textual.widgets import DataTable
-from textual import on, events, work
+from typing import TYPE_CHECKING, Any, cast
+
+from textual import events, on, work
 from textual.binding import Binding
+from textual.widgets import DataTable
+
+from src.core.debug_logger import DebugLogger
 from src.core.di import Container
-from src.state.store import Store
-from src.network.spotify_network import SpotifyNetwork
-from src.ui.modals.track_menu import TrackMenuPopup
-from src.hooks.track_actions import (
-    play_track,
-    start_track_radio,
-    save_track,
-    remove_saved_track,
-)
-from src.core.utils import strip_icons
 from src.core.icons import Icons
 from src.core.strings import Strings
-from src.core.debug_logger import DebugLogger
+from src.core.utils import strip_icons
+from src.hooks.track_actions import (
+    play_track,
+    remove_saved_track,
+    save_track,
+    start_track_radio,
+)
+from src.network.spotify_network import SpotifyNetwork
+from src.state.store import Store
+from src.ui.modals.track_menu import TrackMenuPopup
 
 if TYPE_CHECKING:
     from src.ui.terminal_renderer import TerminalRenderer
@@ -28,11 +30,14 @@ class TrackList(DataTable):
         Binding("shift+u", "page_up", "Page Up", show=True),
         Binding("D", "page_down", "Page Down", show=False),
         Binding("U", "page_up", "Page Up", show=False),
+        Binding("q", "add_queue", "Add to Queue", show=False),
+        Binding("x", "remove_queue", "Remove from Queue", show=False),
+        Binding("delete", "remove_queue", "Remove from Queue", show=False),
     ]
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.track_data_map: Dict[str, Any] = {}
+        self.track_data_map: dict[str, Any] = {}
         self.debug = DebugLogger()
 
     def on_mount(self):
@@ -278,11 +283,24 @@ class TrackList(DataTable):
                 if track.get("album"):
                     album_name = track["album"].get("name", "Unknown Album")
 
+                track_name_display = strip_icons(track["name"])
+                artist_display = artists
+                album_display = strip_icons(album_name)
+                duration_display = duration_str
+
+                if track.get("_is_currently_playing"):
+                    track_name_display = f"[bold #a6e3a1]{Icons.PLAY} {track_name_display}[/]"
+                    artist_display = f"[bold #a6e3a1]{artist_display}[/]"
+                    album_display = f"[bold #a6e3a1]{album_display}[/]"
+                    duration_display = f"[bold #a6e3a1]{duration_display}[/]"
+                else:
+                    track_name_display = f"{Icons.TRACK} {track_name_display}"
+
                 self.add_row(
-                    f"{Icons.TRACK} {strip_icons(track['name'])}",
-                    artists,
-                    strip_icons(album_name),
-                    duration_str,
+                    track_name_display,
+                    artist_display,
+                    album_display,
+                    duration_display,
                     key=unique_key,
                 )
             except Exception as e:
@@ -327,7 +345,7 @@ class TrackList(DataTable):
             uri = item_data.get("uri")
             display_name = item_data.get("name", "Context")
 
-            def on_context_action_selected(action: Optional[str]):
+            def on_context_action_selected(action: str | None):
                 if not action:
                     return
 
@@ -356,7 +374,7 @@ class TrackList(DataTable):
         display_name = f"{track_data.get('name', 'Unknown')} by {artists}"
         context_uri = self.store.get("last_active_context")
 
-        def on_action_selected(action: Optional[str]):
+        def on_action_selected(action: str | None):
             if not action:
                 return
 
@@ -393,6 +411,21 @@ class TrackList(DataTable):
                     save_track(track_data["uri"], self.app)
                 elif action == "remove":
                     remove_saved_track(track_data["uri"], self.app)
+                elif action == "add_queue":
+                    from src.hooks.track_actions import add_to_queue
+
+                    add_to_queue(track_data["uri"], self.app)
+                elif action == "remove_queue":
+                    from src.hooks.track_actions import remove_from_queue
+
+                    remove_from_queue(track_data["uri"], self.app)
+                    state = self.store.get("pagination_state")
+                    if state and state.get("type") == "queue":
+                        from src.ui.components.content_tree.content_tree import ContentTree
+
+                        tree = self.app.query_one(ContentTree)
+                        if tree:
+                            tree.load_queue()
 
             import threading
 
@@ -400,9 +433,33 @@ class TrackList(DataTable):
 
         self.app.push_screen(TrackMenuPopup(track_data["uri"], display_name), on_action_selected)
 
-    def get_highlighted_track_data(self) -> Optional[dict]:
+    def get_highlighted_track_data(self) -> dict | None:
         if self.cursor_row is not None:
             keys = list(self.track_data_map.keys())
             if 0 <= self.cursor_row < len(keys):
                 return self.track_data_map[keys[self.cursor_row]]
         return None
+
+    def action_add_queue(self):
+        """Add highlighted track to queue."""
+        data = self.get_highlighted_track_data()
+        if data and data.get("uri"):
+            from src.hooks.track_actions import add_to_queue
+
+            add_to_queue(data["uri"], self.app)
+
+    def action_remove_queue(self):
+        """Remove highlighted track from queue (only works in queue view)."""
+        state = self.store.get("pagination_state")
+        if state and state.get("type") == "queue":
+            data = self.get_highlighted_track_data()
+            if data and data.get("uri"):
+                from src.hooks.track_actions import remove_from_queue
+
+                remove_from_queue(data["uri"], self.app)
+                # Refresh queue view
+                from src.ui.components.content_tree.content_tree import ContentTree
+
+                tree = self.app.query_one(ContentTree)
+                if tree:
+                    tree.load_queue()

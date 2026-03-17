@@ -1,27 +1,26 @@
-from typing import Dict, Any, List, Optional, cast, Set, TYPE_CHECKING
 import threading
+from typing import TYPE_CHECKING
+
+from textual import on, work
 from textual.widgets import Tree
 from textual.widgets.tree import TreeNode
-from textual.binding import Binding
-from textual import work, events, on
+
 from src.core.di import Container
-from src.state.store import Store
-from src.network.spotify_network import SpotifyNetwork
 from src.core.utils import strip_icons
-from src.core.icons import Icons
+from src.network.spotify_network import SpotifyNetwork
+from src.state.store import Store
 from src.ui.components.content_tree.tree_nodes import (
     CollectionBranch,
-    PlaylistsBranch,
     DiscoveryBranch,
+    PlaylistsBranch,
 )
 
 if TYPE_CHECKING:
-    from src.ui.terminal_renderer import TerminalRenderer
+    pass
 
 
 class ContentTree(Tree):
-    """
-    Primary navigation component using a tree structure.
+    """Primary navigation component using a tree structure.
     """
 
     def __init__(self, **kwargs):
@@ -115,7 +114,7 @@ class ContentTree(Tree):
         finally:
             self._is_refreshing = False
 
-    def _get_expanded_node_ids(self, node: TreeNode) -> Set[str]:
+    def _get_expanded_node_ids(self, node: TreeNode) -> set[str]:
         expanded = set()
         if node.is_expanded and node.data:
             node_id = node.data.get("id")
@@ -125,7 +124,7 @@ class ContentTree(Tree):
             expanded.update(self._get_expanded_node_ids(child))
         return expanded
 
-    def _restore_expansion(self, node: TreeNode, expanded_ids: Set[str]):
+    def _restore_expansion(self, node: TreeNode, expanded_ids: set[str]):
         if node.data:
             node_id = node.data.get("id")
             if node_id in expanded_ids:
@@ -169,17 +168,18 @@ class ContentTree(Tree):
             self.load_recently_played()
         elif node_type == "made_for_you":
             self.load_made_for_you()
+        elif node_type == "queue":
+            self.load_queue()
         elif node_type == "featured_hub":
             self.load_featured_hub()
 
     @work(exclusive=True, thread=True)
     def load_spotify_user_playlists_to_table(self, user_id: str):
+        """Loads all playlists for a user (like 'spotify') and displays them in the main table.
         """
-        Loads all playlists for a user (like 'spotify') and displays them in the main table.
-        """
-        import time
-        import re
         import datetime
+        import re
+        import time
 
         def _render(pl_list):
             current_year = datetime.datetime.now().year
@@ -412,8 +412,8 @@ class ContentTree(Tree):
 
     @work(exclusive=True, thread=True)
     def load_liked_songs(self):
-        from src.core.debug_logger import DebugLogger
         from src.core.cache import CacheStore
+        from src.core.debug_logger import DebugLogger
 
         debug = DebugLogger()
         cache = CacheStore(enable_disk=True)
@@ -513,8 +513,8 @@ class ContentTree(Tree):
 
     @work(exclusive=True, thread=True)
     def load_playlist_tracks(self, playlist_id: str):
-        from src.core.debug_logger import DebugLogger
         from src.core.cache import CacheStore
+        from src.core.debug_logger import DebugLogger
 
         debug = DebugLogger()
         cache = CacheStore(enable_disk=True)
@@ -619,6 +619,54 @@ class ContentTree(Tree):
 
         except Exception as e:
             debug.error("ContentTree", f"Failed to load playlist: {e}")
+        finally:
+            current_l = self.store.get("loading_states") or {}
+            self.app.call_from_thread(
+                self.store.set, "loading_states", {**current_l, "track_list": False}
+            )
+
+    @work(exclusive=True, thread=True)
+    def load_queue(self):
+        from src.core.debug_logger import DebugLogger
+        from src.state.virtual_queue import VirtualQueueManager
+
+        debug = DebugLogger()
+        try:
+            current_l = self.store.get("loading_states") or {}
+            self.app.call_from_thread(
+                self.store.set, "loading_states", {**current_l, "track_list": True}
+            )
+
+            # Fetch queue
+            queue_data = self.network.get_queue()
+            if not queue_data:
+                self.app.call_from_thread(self.store.set, "current_tracks", [])
+                return
+
+            vq_manager = VirtualQueueManager()
+            filtered_queue = vq_manager.filter_queue(queue_data)
+
+            tracks = []
+
+            # Add currently playing
+            currently_playing = filtered_queue.get("currently_playing")
+            if currently_playing:
+                # We add a special marker
+                currently_playing["_is_currently_playing"] = True
+                tracks.append(currently_playing)
+
+            # Add queued tracks
+            for t in filtered_queue.get("queue", []):
+                tracks.append(t)
+
+            self.app.call_from_thread(self.store.set, "pagination_state", {"type": "queue"})
+            self.app.call_from_thread(self.store.set, "current_tracks", tracks)
+            self.app.call_from_thread(
+                self.store.set, "last_active_context", "queue", persist=True
+            )
+            self.app.call_from_thread(lambda: self.app.query_one("TrackList").focus())
+        except Exception as e:
+            debug.error("ContentTree", f"Failed to load queue: {e}")
         finally:
             current_l = self.store.get("loading_states") or {}
             self.app.call_from_thread(

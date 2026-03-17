@@ -1,7 +1,3 @@
-from src.hooks.usePlayTrack import usePlayTrack as play_track
-from src.hooks.useTrackRadio import useTrackRadio as start_track_radio
-from src.hooks.useSaveTrack import useSaveTrack as save_track
-from src.hooks.useRemoveTrack import useRemoveTrack as remove_saved_track
 from src.core.di import Container
 from src.network.spotify_network import SpotifyNetwork
 from src.state.store import Store
@@ -93,5 +89,32 @@ def toggle_saved(track_uri: str, app):
         else:
             network.library.save_tracks([track_id])
 
+    except Exception:
+        pass
+
+def add_to_queue(track_uri: str, app):
+    """Add a track to the virtual and Spotify queue."""
+    try:
+        network = Container.resolve(SpotifyNetwork)
+        # Call Spotify API
+        network.add_to_queue(track_uri)
+        # Also remove it from skipped uris if it was there
+        from src.state.virtual_queue import VirtualQueueManager
+        VirtualQueueManager().unmark_skipped(track_uri)
+
+        if app and hasattr(app, "notify"):
+            app.call_from_thread(app.notify, "Added to queue")
+    except Exception:
+        pass
+
+
+def remove_from_queue(track_uri: str, app):
+    """Mark a track as skipped in the virtual queue."""
+    try:
+        from src.state.virtual_queue import VirtualQueueManager
+        VirtualQueueManager().mark_skipped(track_uri)
+
+        if app and hasattr(app, "notify"):
+            app.call_from_thread(app.notify, "Removed from queue")
     except Exception:
         pass

@@ -287,3 +287,20 @@ class PlaybackService(SpotifyServiceBase):
                 store.set("preferred_device_name", name)
         except:
             pass
+
+    def get_queue(self) -> dict[str, Any]:
+        """Fetch the current playback queue."""
+        if not self.sp:
+            return {}
+        result = self._safe_api_call(self.sp.queue, track_name="get_queue", cache_ttl=5)
+        return result or {}
+
+    def add_to_queue(self, uri: str) -> bool:
+        """Add a track or episode to the playback queue."""
+        if not self.sp:
+            return False
+        try:
+            self._safe_api_call(self.sp.add_to_queue, uri, track_name="add_to_queue")
+            return True
+        except Exception:
+            return False

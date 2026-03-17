@@ -61,6 +61,8 @@ class WhichKeyPopup(BaseModal):
                 ("s", "Toggle Shuffle"),
                 ("r", "Cycle Repeat"),
                 ("l", "Like/Unlike Track"),
+                ("q", "Add to Queue"),
+                ("x / del", "Remove from Queue (in Up Next)"),
             ],
             "Volume": [
                 ("+", "Volume Up"),
