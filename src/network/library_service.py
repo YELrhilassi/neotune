@@ -149,3 +149,52 @@ class LibraryService(SpotifyServiceBase):
             cache_ttl=60,
         )
         return result.get("items", []) if result else []
+
+    def get_artist_top_tracks(self, artist_id: str, country: str = "US") -> list[dict[str, Any]]:
+        """Fetch top tracks for an artist."""
+        if not self.sp:
+            return []
+        result = self._safe_api_call(
+            self.sp.artist_top_tracks,
+            artist_id,
+            country=country,
+            track_name="artist_top_tracks",
+            cache_ttl=3600,
+        )
+        tracks = result.get("tracks", []) if result else []
+        return [{"track": t} for t in tracks]
+
+    def check_saved_tracks(self, track_ids: list[str]) -> list[bool]:
+        """Check if tracks are saved in user's library."""
+        if not self.sp or not track_ids:
+            return []
+        return (
+            self._safe_api_call(
+                self.sp.current_user_saved_tracks_contains,
+                track_ids,
+                track_name="check_saved_tracks",
+                cache_ttl=60,
+                default_return=[],
+            )
+            or []
+        )
+
+    def save_tracks(self, track_ids: list[str]) -> bool:
+        """Save tracks to user's library."""
+        if not self.sp or not track_ids:
+            return False
+        try:
+            self.sp.current_user_saved_tracks_add(track_ids)
+            return True
+        except Exception:
+            return False
+
+    def remove_saved_tracks(self, track_ids: list[str]) -> bool:
+        """Remove tracks from user's library."""
+        if not self.sp or not track_ids:
+            return False
+        try:
+            self.sp.current_user_saved_tracks_delete(track_ids)
+            return True
+        except Exception:
+            return False

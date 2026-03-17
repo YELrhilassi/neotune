@@ -62,13 +62,15 @@ WhichKeyPopup {
     border-title-color: $primary;
     border-subtitle-color: $text;
     background: rgba(24, 24, 37, 0.95);
-    padding: 0 2;
+    padding: 1 2;
     margin: 0 1;
 }
 
-#which-key-content {
+#which-key-page-content {
     height: auto;
     width: auto;
+    min-width: 50;
+    max-width: 80;
 }
 
 CommandPrompt {

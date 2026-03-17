@@ -1,31 +1,30 @@
-import time
 import threading
-from typing import Dict, Any, List, Optional, cast, Literal, Set, TYPE_CHECKING
-from textual.app import App, ComposeResult
-from textual.containers import Horizontal
-from textual.binding import Binding
-from textual import events, work, on
+import time
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Set, cast
 
-from src.core.di import Container
-from src.state.store import Store
-from src.state.pubsub import PubSub
-from src.network.spotify_network import SpotifyNetwork
-from src.network.local_player import LocalPlayer
+from spotipy.oauth2 import SpotifyOauthError
+from textual import events, on, work
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import Horizontal
+
 from src.config.user_prefs import UserPreferences
 from src.core.command_service import CommandService
 from src.core.debug_logger import DebugLogger, LogLevel
-from spotipy.oauth2 import SpotifyOauthError
-
-from src.hooks.useEnsureActiveDevice import useEnsureActiveDevice
-from src.hooks.useSwitchToLocalPlayer import useSwitchToLocalPlayer
-from src.hooks.useRefreshData import useRefreshData
-from src.hooks.useUpdateNowPlaying import useUpdateNowPlaying
+from src.core.di import Container
 from src.hooks.useAutoPlay import useAutoPlay
-
+from src.hooks.useEnsureActiveDevice import useEnsureActiveDevice
+from src.hooks.useRefreshData import useRefreshData
+from src.hooks.useSwitchToLocalPlayer import useSwitchToLocalPlayer
+from src.hooks.useUpdateNowPlaying import useUpdateNowPlaying
+from src.network.local_player import LocalPlayer
+from src.network.spotify_network import SpotifyNetwork
+from src.state.pubsub import PubSub
+from src.state.store import Store
 from src.ui.components.now_playing import NowPlaying
 from src.ui.components.sidebar import SidebarPanels
-from src.ui.components.track_table import TrackList
 from src.ui.components.status_bar import StatusBar
+from src.ui.components.track_table import TrackList
 from src.ui.modals.which_key import WhichKeyPopup
 from src.ui.themes import THEMES
 
@@ -41,12 +40,12 @@ class TerminalRenderer(App):
         "../../styles/main.tcss",
         "../../styles/_base.tcss",
         "../../styles/_status_bar.tcss",
-        "../../styles/_now_playing.tcss",
         "../../styles/_main_view.tcss",
         "../../styles/_modals.tcss",
         "../../styles/_telescope.tcss",
         "../../styles/_fuzzy.tcss",
         "../../styles/_onboarding.tcss",
+        "../../styles/_now_playing.tcss",
     ]
 
     BINDINGS = [
@@ -206,8 +205,12 @@ class TerminalRenderer(App):
             self.store.set("mode", mode)
         except:
             pass
-        if self.is_screen_active("WhichKeyPopup"):
-            self.pop_screen()
+        # Only try to pop WhichKey if it's actually on the stack
+        try:
+            if self.is_screen_active("WhichKeyPopup") and len(self._screen_stack) > 1:
+                self.pop_screen()
+        except:
+            pass
 
     def handle_leader_command(self, key_char: str) -> None:
         self.cancel_leader()
@@ -280,10 +283,81 @@ class TerminalRenderer(App):
                     event.stop()
                     return
 
-        if key == "space" and not is_leader and not in_input:
-            self.action_play_pause()
+        # Direct volume controls (no leader needed)
+        if char == "+" and not in_input and not is_modal_active:
+            self._adjust_volume(2)
             event.stop()
             return
+        elif char == "-" and not in_input and not is_modal_active:
+            self._adjust_volume(-2)
+            event.stop()
+            return
+        elif key == "m" and not in_input and not is_modal_active:
+            self._toggle_mute()
+            event.stop()
+            return
+
+    def _adjust_volume(self, delta: int):
+        """Adjust volume by delta percent."""
+        import threading
+
+        def _worker():
+            try:
+                playback = self.store.get("current_playback")
+                if not playback or not playback.get("device"):
+                    return
+                device = playback["device"]
+                current_vol = device.get("volume_percent", 50)
+                new_vol = max(0, min(100, current_vol + delta))
+                nw = Container.resolve(SpotifyNetwork)
+                device_id = device.get("id")
+                if device_id and nw.playback.sp:
+                    try:
+                        nw.playback.sp.volume(new_vol, device_id=device_id)
+                    except:
+                        pass
+                device["volume_percent"] = new_vol
+                self.call_from_thread(self.store.set, "current_playback", playback)
+            except Exception:
+                pass
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _toggle_mute(self):
+        """Toggle mute/unmute."""
+        import threading
+
+        def _worker():
+            try:
+                playback = self.store.get("current_playback")
+                if not playback or not playback.get("device"):
+                    return
+                device = playback["device"]
+                current_vol = device.get("volume_percent", 50)
+
+                # Store previous volume for unmute
+                muted = getattr(self, "_muted", False)
+                if muted:
+                    new_vol = getattr(self, "_prev_volume", 50)
+                    object.__setattr__(self, "_muted", False)
+                else:
+                    object.__setattr__(self, "_prev_volume", current_vol)
+                    new_vol = 0
+                    object.__setattr__(self, "_muted", True)
+
+                nw = Container.resolve(SpotifyNetwork)
+                device_id = device.get("id")
+                if device_id and nw.playback.sp:
+                    try:
+                        nw.playback.sp.volume(new_vol, device_id=device_id)
+                    except:
+                        pass
+                device["volume_percent"] = new_vol
+                self.call_from_thread(self.store.set, "current_playback", playback)
+            except Exception as e:
+                pass
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def apply_theme(self, theme_name: str) -> None:
         if hasattr(self.user_prefs, "theme_vars") and self.user_prefs.theme_vars:

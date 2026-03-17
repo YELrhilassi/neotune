@@ -1,5 +1,5 @@
 from textual.app import ComposeResult
-from textual.widgets import Label
+from textual.widgets import Label, Static
 from textual.containers import Vertical, Horizontal, Grid
 from textual import events
 from textual.reactive import reactive
@@ -13,142 +13,148 @@ from src.config.user_prefs import UserPreferences
 class WhichKeyPopup(BaseModal):
     current_page = reactive(0)
 
-    # Move pagination here to avoid messy logic in TerminalRenderer
     BINDINGS = [
         Binding("left", "previous_page", "Previous Page", show=False),
         Binding("right", "next_page", "Next Page", show=False),
         Binding("escape", "close", "Close", show=False),
+        Binding("q", "close", "Close", show=False),
     ]
 
     def __init__(self):
         super().__init__()
         self.prefs = Container.resolve(UserPreferences)
-
-        # Gather all keys and build pages
         self.pages = self._build_pages()
 
     def _build_pages(self):
-        all_keys = []
-
-        # 1. Global
-        all_keys.append(("Global", self.prefs.leader, "Leader Key"))
-        all_keys.append(("Global", "tab", "Focus Next"))
-        all_keys.append(("Global", "enter", "Select"))
-        all_keys.append(("Global", "esc", "Cancel/Close"))
-
-        # 2. Navigation
-        nav = self.prefs.nav_bindings
-        # Sort navigation keys logically
-        nav_order = ["up", "down", "left", "right", "page_up", "page_down"]
-        for name in nav_order:
-            if name in nav:
-                key = nav[name]
-                all_keys.append(
-                    ("Navigation", key, f"Nav {name.replace('_', ' ').title()}")
-                )
-
-        # 3. Leader Actions
-        kb = self.prefs.keybindings or {}
-        # Sort leader actions by description for better organization
-        sorted_kb = sorted(kb.items(), key=lambda x: x[1]["desc"])
-        for key, val in sorted_kb:
-            all_keys.append(("Leader Actions", key, val["desc"]))
-
-        # 4. Telescope (if active)
-        if any(type(s).__name__ == "TelescopePrompt" for s in self.app.screen_stack):
-            all_keys.append(("Telescope", "H/L", "Tabs Switch"))
-            all_keys.append(("Telescope", "i/a", "Insert Mode"))
-            all_keys.append(("Telescope", "h/l", "Switch Panels"))
-            all_keys.append(("Telescope", "j/k", "Navigate List"))
-            all_keys.append(("Telescope", "esc", "Normal Mode"))
-
-        # Group by category in a specific order
-        category_order = ["Global", "Navigation", "Leader Actions", "Telescope"]
-
-        categories = {cat: [] for cat in category_order}
-        for cat, key, desc in all_keys:
-            if cat in categories:
-                categories[cat].append((key, desc))
-
-        # Let's chunk categories or items into pages.
-        ITEMS_PER_PAGE = 30
+        """Build categorized keybinding pages."""
         pages = []
-        current_page_items = []
 
-        for cat in category_order:
-            items = categories[cat]
-            if not items:
-                continue
+        # Page 1: Global & Navigation
+        page1 = {
+            "Global": [
+                (self.prefs.leader or "space", "Leader Key"),
+                ("tab", "Focus Next"),
+                ("shift+tab", "Focus Previous"),
+                ("enter", "Select/Play"),
+                ("esc", "Cancel/Close"),
+                ("ctrl+c", "Quit App"),
+            ],
+            "Navigation": [
+                ("h / ←", "Move Left"),
+                ("j / ↓", "Move Down"),
+                ("k / ↑", "Move Up"),
+                ("l / →", "Move Right"),
+                ("g+g", "Go to Top"),
+                ("G", "Go to Bottom"),
+                ("page_up", "Page Up"),
+                ("page_down", "Page Down"),
+            ],
+        }
+        pages.append(page1)
 
-            for key, desc in items:
-                current_page_items.append((cat, key, desc))
-                if len(current_page_items) >= ITEMS_PER_PAGE:
-                    pages.append(current_page_items)
-                    current_page_items = []
+        # Page 2: Playback Controls
+        page2 = {
+            "Playback": [
+                ("p", "Play/Pause"),
+                ("n", "Next Track"),
+                ("b", "Previous Track"),
+                ("s", "Toggle Shuffle"),
+                ("r", "Cycle Repeat"),
+                ("l", "Like/Unlike Track"),
+            ],
+            "Volume": [
+                ("+", "Volume Up"),
+                ("-", "Volume Down"),
+                ("m", "Mute/Unmute"),
+            ],
+            "Now Playing (when focused)": [
+                ("space", "Play/Pause"),
+                ("n", "Next Track"),
+                ("p", "Previous Track"),
+                ("s", "Toggle Shuffle"),
+                ("r", "Cycle Repeat"),
+                ("l", "Like Track"),
+            ],
+        }
+        pages.append(page2)
 
-        if current_page_items:
-            pages.append(current_page_items)
+        # Page 3: Search & Discovery
+        page3 = {
+            "Search": [
+                ("/", "Search Tracks/Playlists"),
+                ("s", "Fuzzy Search"),
+                (":", "Command Prompt"),
+            ],
+            "Discovery": [
+                ("R", "Start Track Radio"),
+                ("o", "Select Output Device"),
+                ("a", "Select Audio Backend"),
+            ],
+            "System": [
+                ("ctrl+l", "Show Debug Logs"),
+                ("?", "Show Which Key"),
+            ],
+        }
+        pages.append(page3)
 
-        return pages if pages else [[]]
+        return pages
 
     def compose(self) -> ComposeResult:
         with Vertical(id="which-key-dialog"):
-            with Vertical(id="which-key-content"):
-                yield Label("Loading...", id="which-key-page-content")
+            yield Static("Loading...", id="which-key-page-content")
 
     def _get_page_indicator(self) -> str:
         total = len(self.pages)
         if total <= 1:
-            return "esc to close"
-        return f"Page {self.current_page + 1}/{total} • ◀/▶ to paginate • esc to close"
+            return "Which Key?"
+        return f"Page {self.current_page + 1}/{total} • ◀/▶ to paginate • esc/q to close"
 
     def watch_current_page(self, new_page: int):
         self.update_content()
 
+    def _render_category(self, category: str, items: list, color: str) -> str:
+        """Render a category section with colored header."""
+        lines = [f"[{color} bold]{category}[/]"]
+        lines.append(f"[{color}]─" + "─" * len(category) + "─[/]")
+
+        for key, desc in items:
+            key_display = str(key).upper()
+            lines.append(f" [bold]{key_display:<12}[/] {desc}")
+
+        return "\n".join(lines)
+
     def update_content(self):
         try:
-            content_label = self.query_one("#which-key-page-content", Label)
-            dialog = self.query_one("#which-key-dialog")
+            content_label = self.query_one("#which-key-page-content", Static)
+            dialog = self.query_one("#which-key-dialog", Vertical)
         except Exception:
             return
 
-        items = self.pages[self.current_page]
+        page_data = self.pages[self.current_page]
 
-        import math
+        # Collect all category renderings
+        sections = []
+        for category, items in page_data.items():
+            color_map = {
+                "Global": "#f38ba8",
+                "Navigation": "#89b4fa",
+                "Playback": "#a6e3a1",
+                "Volume": "#fab387",
+                "Now Playing (when focused)": "#cba6f7",
+                "Search": "#94e2d5",
+                "Discovery": "#b4befe",
+                "System": "#cdd6f4",
+            }
+            color = color_map.get(category, "#cdd6f4")
+            sections.append(self._render_category(category, items, color))
 
-        num_cols = 2
-        num_rows = math.ceil(len(items) / num_cols)
-
-        lines = []
-        for r in range(num_rows):
-            col1_idx = r
-            col2_idx = r + num_rows
-
-            # Format column 1
-            cat1, k1, d1 = items[col1_idx]
-            c1_str = (
-                f"[bold #a6e3a1]{str(k1):<6}[/] [dim]→[/] [#cdd6f4]{str(d1):<24}[/]"
-            )
-
-            # Format column 2 if it exists
-            if col2_idx < len(items):
-                cat2, k2, d2 = items[col2_idx]
-                c2_str = (
-                    f"[bold #a6e3a1]{str(k2):<6}[/] [dim]→[/] [#cdd6f4]{str(d2)}[/]"
-                )
-                lines.append(c1_str + c2_str)
-            else:
-                lines.append(c1_str)
-
-        content_label.update("\n".join(lines))
-        dialog.border_subtitle = self._get_page_indicator()
+        content = "\n\n".join(sections)
+        content_label.update(content)
 
     def on_mount(self):
-        try:
-            dialog = self.query_one("#which-key-dialog")
-            dialog.border_title = "Which Key?"
-        except Exception:
-            pass
+        dialog = self.query_one("#which-key-dialog", Vertical)
+        dialog.border_title = "Which Key?"
+        dialog.border_subtitle = self._get_page_indicator()
         self.update_content()
 
     def action_previous_page(self):
@@ -164,4 +170,27 @@ class WhichKeyPopup(BaseModal):
             self.current_page = 0
 
     def action_close(self):
-        self.app.cancel_leader()
+        """Close the modal without error if already dismissed."""
+        try:
+            if self.app and self in self.app._screen_stack:
+                self.dismiss()
+        except:
+            pass
+
+    def on_key(self, event) -> None:
+        """Handle key events for pagination."""
+        key = event.key
+        char = event.character or ""
+
+        if key == "left":
+            self.action_previous_page()
+            event.stop()
+        elif key == "right":
+            self.action_next_page()
+            event.stop()
+        elif char.lower() == "q":
+            self.action_close()
+            event.stop()
+        elif key == "escape":
+            self.action_close()
+            event.stop()

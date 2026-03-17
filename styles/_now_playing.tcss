@@ -4,32 +4,192 @@
     background: $background;
     border: round $accent;
     margin: 1 2 0 2;
-    padding: 1 2;
+    padding: 0 1;
 }
 
 #np-container {
     height: auto;
     layout: horizontal;
-    align: left middle;
+    align: center middle;
 }
 
+/* Left section: Track info */
 #np-info {
-    width: 1fr;
+    width: 35%;
     height: auto;
     content-align: left middle;
 }
 
-#np-controls {
+#np-track-row {
+    height: auto;
+    layout: horizontal;
+    align: left middle;
+}
+
+#np-play-icon {
+    width: auto;
+    margin-right: 1;
+}
+
+#np-track-name {
+    width: 1fr;
+    height: auto;
+    content-align: left middle;
+    text-style: bold;
+}
+
+#np-meta-row {
+    height: auto;
+    layout: horizontal;
+    align: left middle;
+    margin-top: 0;
+}
+
+#np-artist-icon, #np-album-icon {
+    width: auto;
+    margin-right: 1;
+    color: $text-accent;
+}
+
+#np-artist-name, #np-album-name {
     width: auto;
     height: auto;
+    color: $text;
+}
+
+#np-meta-sep {
+    width: auto;
+    margin: 0 1;
+}
+
+/* Center section: Progress with timestamps on edges */
+#np-progress-section {
+    width: 35%;
+    height: auto;
+    layout: horizontal;
+    align: center middle;
+    padding: 0;
+}
+
+#np-progress-bar {
+    width: 1fr;
+    height: 1;
+    content-align: center middle;
+    margin: 0 1;
+}
+
+#np-progress-bar #bar {
+    background: $surface;
+}
+
+#np-progress-bar #bar.bar--complete {
+    background: $success;
+}
+
+#np-time-current {
+    width: 5;
+    color: $text;
     content-align: right middle;
+    margin-right: 0;
+}
+
+#np-time-total {
+    width: 5;
+    color: $text-muted;
+    content-align: left middle;
+    margin-left: 0;
+}
+
+#np-progress-bar {
+    width: 1fr;
+    height: 1;
+    margin: 0;
+    padding: 0;
+}
+
+/* Right section: Controls */
+#np-controls {
+    width: 30%;
+    height: auto;
     align: right middle;
 }
 
-#np-track-name, #np-artist-name {
+#np-playback-controls {
     height: auto;
+    layout: horizontal;
+    align: center middle;
 }
 
-#np-shuffle-icon, #np-repeat-icon {
+/* Icon buttons - stable styling with background */
+.icon-btn {
+    width: 3;
+    height: 3;
+    padding: 0;
+    margin: 0 1;
+    content-align: center middle;
+    background: $surface;
+    color: $text;
+    border: none;
+    text-style: none;
+}
+
+.icon-btn:focus {
+    background: $surface-lighten-1;
+    color: $text-accent;
+    text-style: bold;
+    border: solid $accent;
+}
+
+.icon-btn.active {
+    background: $surface;
+    color: $success;
+}
+
+.icon-btn.track {
+    background: $surface;
+    color: $warning;
+}
+
+.icon-btn.liked {
+    background: $surface;
+    color: $error;
+}
+
+/* Clickable labels - underline only when focused via keyboard */
+ClickableLabel:focus {
+    text-style: underline;
+    color: $text-accent;
+}
+
+#np-like-btn {
+    margin-right: 2;
+}
+
+/* Volume section */
+#np-volume-section {
+    height: auto;
+    layout: horizontal;
+    align: center middle;
     margin-left: 1;
+    min-width: 12;
+}
+
+#np-volume-icon {
+    width: auto;
+    color: $text-accent;
+}
+
+#np-volume-bar {
+    width: 8;
+    height: auto;
+    content-align: center middle;
+    margin: 0 1;
+    color: $success;
+}
+
+#np-volume-text {
+    width: auto;
+    min-width: 3;
+    content-align: center middle;
+    color: $text-muted;
 }

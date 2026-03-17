@@ -7,19 +7,23 @@ from src.config.user_prefs import UserPreferences
 
 ResultType = TypeVar("ResultType")
 
+
 class BaseModal(ModalScreen[ResultType]):
-    BINDINGS = [
-        Binding("escape", "dismiss", "Close")
-    ]
-    
+    BINDINGS = [Binding("escape", "dismiss", "Close")]
+
     def on_key(self, event: events.Key):
         # Allow escape to always dismiss
         if event.key == "escape":
-            self.dismiss()
+            self.action_close()
             event.prevent_default()
             return
-        
+
         # We removed the global j/k/h/l translation here to prevent double handling.
         # Subclasses or widgets should handle their own navigation.
 
-
+    def action_close(self):
+        """Safely close the modal."""
+        try:
+            self.dismiss()
+        except:
+            pass
