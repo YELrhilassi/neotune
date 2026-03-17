@@ -11,7 +11,7 @@ from src.state.store import Store
 from src.network.spotify_network import SpotifyNetwork
 from src.config.user_prefs import UserPreferences
 from src.network.local_player import LocalPlayer
-from src.hooks.track_actions import play_track
+from src.hooks.usePlayTrack import usePlayTrack as play_track
 from src.actions.auth_actions import logout
 from src.actions.health_check import perform_health_check
 

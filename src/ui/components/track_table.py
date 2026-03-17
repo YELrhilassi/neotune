@@ -10,12 +10,10 @@ from src.core.di import Container
 from src.core.icons import Icons
 from src.core.strings import Strings
 from src.core.utils import strip_icons
-from src.hooks.track_actions import (
-    play_track,
-    remove_saved_track,
-    save_track,
-    start_track_radio,
-)
+from src.hooks.usePlayTrack import usePlayTrack as play_track
+from src.hooks.useTrackRadio import useTrackRadio as start_track_radio
+from src.hooks.useSaveTrack import useSaveTrack as save_track
+from src.hooks.useRemoveTrack import useRemoveTrack as remove_saved_track
 from src.network.spotify_network import SpotifyNetwork
 from src.state.store import Store
 from src.ui.modals.track_menu import TrackMenuPopup
