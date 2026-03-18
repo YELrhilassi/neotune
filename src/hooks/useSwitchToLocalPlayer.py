@@ -15,11 +15,13 @@ def useSwitchToLocalPlayer(app, force=False):
         playback_svc = Container.resolve(PlaybackService)
         store = Container.resolve(Store)
 
-        # Try a few times to find the local player (daemons take time to register)
-        for attempt in range(5):
-            devices = playback_svc.get_devices()
+        # Try multiple times to find the local player (daemons take time to register)
+        # First few attempts: quick checks
+        for attempt in range(3):
+            devices = playback_svc.get_devices(force=True)  # Force refresh
             if not devices:
-                time.sleep(1.0)
+                if attempt < 2:
+                    time.sleep(0.5)
                 continue
 
             # Check if anything is already active
@@ -43,9 +45,29 @@ def useSwitchToLocalPlayer(app, force=False):
 
                 return True
 
+        # Extended wait for slow device registration
+        for attempt in range(10):
             time.sleep(1.0)
+            devices = playback_svc.get_devices(force=True)
 
-    except Exception:
-        pass
+            if not devices:
+                continue
+
+            target_device = next((d for d in devices if d["name"] == "NeoTune Player"), None)
+
+            if target_device:
+                dev_id = target_device["id"]
+                store.set("preferred_device_id", dev_id)
+                store.set("preferred_device_name", target_device["name"])
+
+                if force:
+                    playback_svc.transfer(dev_id, force_play=True)
+
+                return True
+
+    except Exception as e:
+        import logging
+
+        logging.getLogger("neotune").error(f"Error switching to local player: {e}")
 
     return False

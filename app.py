@@ -141,20 +141,29 @@ if __name__ == "__main__":
         result = onboarding.run()
         if result != "auth_complete":
             sys.exit(0)
-        setup_spotify()
+    setup_spotify()
 
     player = Container.resolve(LocalPlayer)
     network = Container.resolve(SpotifyNetwork)
-    if player and network:
-        prefs = Container.resolve(UserPreferences)
-        token = network.get_access_token()
+    prefs = Container.resolve(UserPreferences)
+    token = network.get_access_token()
+
+    if player and network and token:
         print(f"[DEBUG] Starting librespot with token: {'Yes' if token else 'No'}")
         print(f"[DEBUG] Audio config: {prefs.audio_config}")
         print(f"[DEBUG] librespot binary path: {player.binary_path}")
         player.start(audio_config=prefs.audio_config, access_token=token)
-        time.sleep(1)  # Give librespot time to start
+
+        # Give librespot time to fully start and register with Spotify
+        print("[INFO] Waiting for librespot to register with Spotify...")
+        time.sleep(2)
+
         if player.is_running():
             print("[INFO] librespot process started successfully")
+            # Try to auto-select the device after startup
+            from src.hooks.useSwitchToLocalPlayer import useSwitchToLocalPlayer
+
+            useSwitchToLocalPlayer(None, force=False)
         else:
             print("[ERROR] librespot process failed to start")
 
