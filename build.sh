@@ -97,14 +97,31 @@ cp "$LIBRESPOT_SRC" src/network/librespot
 chmod +x src/network/librespot
 print_status "librespot copied successfully"
 
+# Check for virtual environment
+if [ -z "$VIRTUAL_ENV" ]; then
+    print_warning "No virtual environment detected. Looking for venv..."
+    if [ -d "./venv" ]; then
+        print_status "Activating venv..."
+        source ./venv/bin/activate
+    elif [ -d "./.venv" ]; then
+        print_status "Activating .venv..."
+        source ./.venv/bin/activate
+    else
+        print_error "No virtual environment found. Please create one:"
+        print_error "  python3 -m venv venv"
+        print_error "  source venv/bin/activate"
+        exit 1
+    fi
+fi
+
 # Install Python dependencies
 print_status "Installing Python dependencies..."
-pip install -q pyinstaller
-pip install -q -e .
+pip install -q pyinstaller || pip install --break-system-packages -q pyinstaller
+pip install -q -e . || pip install --break-system-packages -q -e .
 
 # Build with PyInstaller
 print_status "Building standalone executable with PyInstaller..."
-pyinstaller neotune.spec --clean --noconfirm
+python -m PyInstaller neotune.spec --clean --noconfirm
 
 # Create distribution directory
 print_status "Creating distribution package..."

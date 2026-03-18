@@ -93,6 +93,8 @@ analysis_kwargs = {
         'keyring.getpassbackend',
         'keyring.util',
         'keyring.util.platform_',
+        'keyrings.alt',
+        'keyrings.alt.file',
         'lupa',
         'lupa._lupa',
         'psutil',
