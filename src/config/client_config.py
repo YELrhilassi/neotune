@@ -104,6 +104,12 @@ class ClientConfiguration:
             # Make file readable only by owner
             os.chmod(self.credentials_path, 0o600)
             logger.info("Saved credentials to file")
+
+            # Clear old token cache when credentials change
+            cache_file = self.config_dir / ".cache" / "spotify_token.json"
+            if cache_file.exists():
+                cache_file.unlink()
+                logger.info("Cleared old token cache")
         except Exception as e:
             logger.error(f"Failed to save credentials to file: {e}")
 

@@ -21,7 +21,19 @@ class AuthService:
 
     def _setup_auth(self) -> None:
         if not self.config.is_valid():
+            logger.error("Cannot setup auth: config is not valid")
             return
+
+        # Set cache path in config directory
+        cache_path = self.config.config_dir / ".cache"
+        cache_path.mkdir(parents=True, exist_ok=True)
+        cache_file = cache_path / "spotify_token.json"
+
+        logger.debug(f"Setting up Spotify OAuth with cache: {cache_file}")
+        logger.debug(
+            f"Client ID: {self.config.client_id[:10]}..." if self.config.client_id else "None"
+        )
+        logger.debug(f"Redirect URI: {self.config.redirect_uri}")
 
         self._auth_manager = SpotifyOAuth(
             requests_timeout=5,
@@ -30,6 +42,7 @@ class AuthService:
             redirect_uri=self.config.redirect_uri,
             scope=",".join(SpotifyScopes.SCOPES),
             open_browser=False,
+            cache_path=str(cache_file),
         )
 
     def get_auth_url(self) -> str:
@@ -75,15 +88,25 @@ class AuthService:
 
         token_info = self._auth_manager.get_cached_token()
         if not token_info:
+            logger.debug("No cached token found")
             return None
 
+        logger.debug(f"Found cached token, expires at: {token_info.get('expires_at')}")
+
         if self._auth_manager.is_token_expired(token_info):
+            logger.debug("Token expired, attempting refresh...")
             try:
                 self._auth_manager.refresh_access_token(token_info["refresh_token"])
+                logger.debug("Token refresh successful")
             except Exception as e:
                 msg = f"Token refresh failed: {e}"
                 logger.error(msg)
                 self._debug.error("AuthService", msg)
+                # Clear invalid cache
+                cache_file = self.config.config_dir / ".cache" / "spotify_token.json"
+                if cache_file.exists():
+                    cache_file.unlink()
+                    logger.info("Cleared invalid token cache")
                 return None
 
         return spotipy.Spotify(auth_manager=self._auth_manager, requests_timeout=10, retries=0)
