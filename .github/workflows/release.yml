@@ -50,12 +50,6 @@ jobs:
       run: |
         cargo build --release --target ${{ matrix.target }} --no-default-features --features "rodio-backend with-libmdns rustls-tls-webpki-roots"
 
-    - name: Build librespot (Windows)
-      if: matrix.os == 'windows-latest'
-      working-directory: ./librespot_src
-      run: |
-        cargo build --release --target ${{ matrix.target }} --no-default-features --features "rodio-backend with-libmdns rustls-tls-webpki-roots"
-
     - name: Upload librespot artifact
       uses: actions/upload-artifact@v4
       with:
@@ -78,14 +72,10 @@ jobs:
             target: x86_64-apple-darwin
             artifact_name: neotune
             exe_suffix: ""
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            artifact_name: neotune
-            exe_suffix: ""
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact_name: neotune
-            exe_suffix: ".exe"
+        - os: macos-latest
+          target: aarch64-apple-darwin
+          artifact_name: neotune
+          exe_suffix: ""
 
     steps:
     - uses: actions/checkout@v4
@@ -107,11 +97,10 @@ jobs:
         name: librespot-${{ matrix.target }}
         path: ./src/network/
 
-    - name: Make librespot executable (Unix)
-      if: matrix.os != 'windows-latest'
-      run: chmod +x ./src/network/librespot
+      - name: Make librespot executable
+        run: chmod +x ./src/network/librespot
 
-    - name: Build executable with PyInstaller
+      - name: Build executable with PyInstaller
       run: |
         pyinstaller neotune.spec --clean --noconfirm
 
