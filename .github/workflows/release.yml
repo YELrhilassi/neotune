@@ -23,9 +23,6 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
             artifact_name: librespot
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            artifact_name: librespot.exe
 
     steps:
     - uses: actions/checkout@v4
@@ -113,11 +110,6 @@ jobs:
     - name: Make librespot executable (Unix)
       if: matrix.os != 'windows-latest'
       run: chmod +x ./src/network/librespot
-
-    - name: Rename librespot (Windows)
-      if: matrix.os == 'windows-latest'
-      run: |
-        move .\src\network\librespot.exe .\src\network\librespot.exe
 
     - name: Build executable with PyInstaller
       run: |
