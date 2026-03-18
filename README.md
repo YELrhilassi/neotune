@@ -1,6 +1,17 @@
 # NeoTune
 
-A sleek, Neovim-inspired Spotify client for the terminal, built with Python and [Textual](https://textual.textualize.io/). 
+A sleek, Neovim-inspired Spotify client for the terminal, built with Python and [Textual](https://textual.textualize.io/).
+
+## Screenshots
+
+### Main Interface
+![Main Interface](img/Screenshot_2026-03-17_22-31-19.png)
+
+### Telescope Fuzzy Finder
+![Telescope Search](img/Screenshot_2026-03-17_22-34-01.png)
+
+### Grep Search
+![Grep Search](img/Screenshot_2026-03-17_22-36-31.png) 
 
 ## Features
 
