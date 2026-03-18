@@ -45,7 +45,7 @@ class NavigateToEvent(Message):
 
 
 class NowPlaying(Static):
-    """Enhanced now playing bar with navigation, progress, and rich controls."""
+    """Compact now playing bar with track info, progress, and controls."""
 
     BINDINGS = [
         Binding("space", "toggle_play", "Play/Pause", show=False),
@@ -68,24 +68,19 @@ class NowPlaying(Static):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="np-container"):
-            # Left: Track Info Section
+            # Left: Track Info (40%)
             with Vertical(id="np-info"):
-                # Track name with play/pause indicator
                 with Horizontal(id="np-track-row"):
                     yield Static(Icons.PAUSE, id="np-play-icon")
                     yield ClickableLabel(
                         Strings.PAUSED_OR_NOTHING, id="np-track-name", nav_type="track"
                     )
-
-                # Artist and Album row with navigation
                 with Horizontal(id="np-meta-row"):
-                    yield Static(Icons.ARTIST, id="np-artist-icon")
                     yield ClickableLabel("", id="np-artist-name", nav_type="artist")
-                    yield Static(" ", id="np-meta-sep")
-                    yield Static(Icons.ALBUM, id="np-album-icon")
+                    yield Static("•", id="np-meta-sep")
                     yield ClickableLabel("", id="np-album-name", nav_type="album")
 
-            # Center: Progress section with timestamps on edges
+            # Center: Progress (35%)
             with Horizontal(id="np-progress-section"):
                 yield Label("--:--", id="np-time-current")
                 yield ProgressBar(
@@ -93,20 +88,15 @@ class NowPlaying(Static):
                 )
                 yield Label("--:--", id="np-time-total")
 
-            # Right: Controls and extras
+            # Right: Controls (25%)
             with Horizontal(id="np-controls"):
-                # Like button as icon (clickable Static)
                 yield Static(Icons.HEART_EMPTY, id="np-like-btn", classes="icon-btn")
-
-                # Playback controls as icons
-                with Horizontal(id="np-playback-controls"):
-                    yield Static(Icons.SHUFFLE_OFF, id="np-shuffle-btn", classes="icon-btn")
-                    yield Static(Icons.SKIP_BACKWARD, id="np-prev-btn", classes="icon-btn")
-                    yield Static(Icons.PAUSE, id="np-play-btn", classes="icon-btn")
-                    yield Static(Icons.SKIP_FORWARD, id="np-next-btn", classes="icon-btn")
-                    yield Static(Icons.REPEAT_OFF, id="np-repeat-btn", classes="icon-btn")
-
-                # Volume indicator with ProgressBar
+                yield Static(Icons.SHUFFLE_OFF, id="np-shuffle-btn", classes="icon-btn")
+                yield Static(Icons.SKIP_BACKWARD, id="np-prev-btn", classes="icon-btn")
+                yield Static(Icons.PAUSE, id="np-play-btn", classes="icon-btn")
+                yield Static(Icons.SKIP_FORWARD, id="np-next-btn", classes="icon-btn")
+                yield Static(Icons.REPEAT_OFF, id="np-repeat-btn", classes="icon-btn")
+                # Volume section
                 with Horizontal(id="np-volume-section"):
                     yield Static(Icons.VOLUME_MED, id="np-volume-icon")
                     yield ProgressBar(
@@ -148,9 +138,6 @@ class NowPlaying(Static):
             progress_bar = self.query_one("#np-progress-bar", ProgressBar)
             time_current = self.query_one("#np-time-current", Label)
             time_total = self.query_one("#np-time-total", Label)
-            volume_icon = self.query_one("#np-volume-icon", Static)
-            volume_bar = self.query_one("#np-volume-bar", ProgressBar)
-            volume_text = self.query_one("#np-volume-text", Label)
         except Exception:
             return
 
@@ -163,7 +150,6 @@ class NowPlaying(Static):
             artists = strip_icons(", ".join([a.get("name", "Unknown") for a in artists_list]))
             track_name = strip_icons(item.get("name", "Unknown Track"))
 
-            # Store URIs for navigation
             track_uri = item.get("uri", "")
             artist_uris = [a.get("uri", "") for a in artists_list if a.get("uri")]
             artist_uri = artist_uris[0] if artist_uris else ""
@@ -174,32 +160,31 @@ class NowPlaying(Static):
 
             is_playing = playback.get("is_playing", False)
 
-            # Update play/pause icon
             play_icon_lbl.update(Icons.PLAY if is_playing else Icons.PAUSE)
 
-            # Update track name with styling
             if is_playing:
-                track_lbl.update(f"[bold #a6e3a1]{track_name}[/]")
+                track_lbl.update(f"{track_name}")
+                track_lbl.styles.color = "#a6e3a1"
             else:
-                track_lbl.update(f"[bold #f38ba8]{track_name}[/]")
+                track_lbl.update(f"{track_name}")
+                track_lbl.styles.color = "#f38ba8"
             track_lbl.uri = track_uri
             track_lbl.nav_type = "track"
 
-            # Update artist
-            artist_lbl.update(f"[#cdd6f4]{artists}[/]")
+            artist_lbl.update(artists)
             artist_lbl.uri = artist_uri
             artist_lbl.nav_type = "artist"
 
-            # Update album
             if album_name:
-                album_lbl.update(f"[#cdd6f4]{album_name}[/]")
+                album_lbl.update(album_name)
                 album_lbl.uri = album_uri
                 album_lbl.nav_type = "album"
                 album_lbl.styles.display = "block"
+                self.query_one("#np-meta-sep").styles.display = "block"
             else:
                 album_lbl.styles.display = "none"
+                self.query_one("#np-meta-sep").styles.display = "none"
 
-            # Update shuffle icon
             shuffle_state = playback.get("shuffle_state", False)
             shuffle_icon = Icons.SHUFFLE_ON if shuffle_state else Icons.SHUFFLE_OFF
             shuffle_btn.update(shuffle_icon)
@@ -207,7 +192,6 @@ class NowPlaying(Static):
             if shuffle_state:
                 shuffle_btn.add_class("active")
 
-            # Update repeat icon
             repeat_state = playback.get("repeat_state", "off")
             repeat_btn.remove_class("active")
             repeat_btn.remove_class("track")
@@ -221,58 +205,31 @@ class NowPlaying(Static):
                 repeat_icon = Icons.REPEAT_OFF
             repeat_btn.update(repeat_icon)
 
-            # Update play icon
             play_btn.update(Icons.PAUSE if is_playing else Icons.PLAY)
 
-            # Check if track is saved
             self._check_saved_status(track_uri)
 
-            # Update progress bar
             progress_ms = playback.get("progress_ms", 0)
             duration_ms = item.get("duration_ms", 0)
             if duration_ms > 0:
                 progress_bar.total = duration_ms
                 progress_bar.progress = progress_ms
 
-                # Update time labels (bold)
-                current_min, current_sec = divmod(progress_ms // 1000, 60)
-                total_min, total_sec = divmod(duration_ms // 1000, 60)
-                time_current.update(f"[bold]{current_min}:{current_sec:02d}[/]")
-                time_total.update(f"[bold]{total_min}:{total_sec:02d}[/]")
-            else:
-                progress_bar.total = None
-                progress_bar.progress = 0
-                time_current.update("--:--")
-                time_total.update("--:--")
-
-            # Update volume with ProgressBar
-            device = playback.get("device", {})
-            volume_pct = device.get("volume_percent", 50)
-            if volume_pct == 0:
-                vol_icon = Icons.VOLUME_MUTE
-            elif volume_pct < 33:
-                vol_icon = Icons.VOLUME_LOW
-            elif volume_pct < 66:
-                vol_icon = Icons.VOLUME_MED
-            else:
-                vol_icon = Icons.VOLUME_HIGH
-            volume_icon.update(vol_icon)
-
-            # Update volume ProgressBar
-            volume_bar.progress = volume_pct
-            volume_text.update(f"{volume_pct}%")
-
+            current_min, current_sec = divmod(progress_ms // 1000, 60)
+            total_min, total_sec = divmod(duration_ms // 1000, 60)
+            time_current.update(f"{current_min}:{current_sec:02d}")
+            time_total.update(f"{total_min}:{total_sec:02d}")
         else:
-            device_name = self.store.get("preferred_device_name") or "No Active Device"
+            device_name = self.store.get("preferred_device_name") or "No Device"
             play_icon_lbl.update(Icons.PAUSE)
-            track_lbl.update(
-                f"[dim]{Strings.PAUSED_OR_NOTHING}[/] [bold #89b4fa]({device_name})[/]"
-            )
+            track_lbl.update(f"{Strings.PAUSED_OR_NOTHING}")
+            track_lbl.styles.color = "#6c7086"
             track_lbl.uri = None
             artist_lbl.update("")
             artist_lbl.uri = None
             album_lbl.update("")
             album_lbl.uri = None
+            self.query_one("#np-meta-sep").styles.display = "none"
             shuffle_btn.update(Icons.SHUFFLE_OFF)
             shuffle_btn.remove_class("active")
             repeat_btn.update(Icons.REPEAT_OFF)
@@ -286,18 +243,6 @@ class NowPlaying(Static):
             progress_bar.progress = 0
             time_current.update("--:--")
             time_total.update("--:--")
-
-            # Reset volume display
-            try:
-                volume_bar = self.query_one("#np-volume-bar", ProgressBar)
-                volume_bar.progress = 0
-            except:
-                pass
-            try:
-                volume_text = self.query_one("#np-volume-text", Label)
-                volume_text.update("--%")
-            except:
-                pass
 
     def _check_saved_status(self, track_uri: str):
         """Check if the current track is saved."""
@@ -325,7 +270,6 @@ class NowPlaying(Static):
 
         threading.Thread(target=check, daemon=True).start()
 
-    # Click handlers for icon buttons
     def on_static_click(self, event) -> None:
         """Handle clicks on Static widgets (icon buttons)."""
         widget_id = event.static.id
@@ -390,15 +334,12 @@ class NowPlaying(Static):
         def navigate():
             try:
                 if nav_type == "artist":
-                    # Load artist top tracks
                     tracks = self.network.library.get_artist_top_tracks(entity_id)
                     self.app.call_from_thread(self.store.set, "current_tracks", tracks)
                 elif nav_type == "album":
-                    # Load album tracks
                     tracks = self.network.library.get_album_tracks(entity_id)
                     self.app.call_from_thread(self.store.set, "current_tracks", tracks)
                 elif nav_type == "track":
-                    # Focus the track in the list if it exists
                     from src.ui.components.track_table import TrackList
 
                     track_list = self.app.query_one(TrackList)

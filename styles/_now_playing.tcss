@@ -1,23 +1,23 @@
 #now-playing {
-    height: auto;
+    height: 5;
     dock: top;
-    background: $background;
-    border: round $accent;
-    margin: 1 2 0 2;
+    background: $surface;
+    border-bottom: solid $panel;
     padding: 0 1;
 }
 
 #np-container {
-    height: auto;
+    height: 100%;
     layout: horizontal;
     align: center middle;
 }
 
-/* Left section: Track info */
+/* Left section: Track info  */
 #np-info {
     width: 35%;
-    height: auto;
+    height: 100%;
     content-align: left middle;
+    padding: 1;
 }
 
 #np-track-row {
@@ -27,8 +27,10 @@
 }
 
 #np-play-icon {
-    width: auto;
+    width: 3;
+    content-align: center middle;
     margin-right: 1;
+    color: $text-accent;
 }
 
 #np-track-name {
@@ -36,6 +38,7 @@
     height: auto;
     content-align: left middle;
     text-style: bold;
+    color: $text;
 }
 
 #np-meta-row {
@@ -45,146 +48,157 @@
     margin-top: 0;
 }
 
-#np-artist-icon, #np-album-icon {
-    width: auto;
-    margin-right: 1;
-    color: $text-accent;
-}
-
-#np-artist-name, #np-album-name {
+#np-artist-name {
     width: auto;
     height: auto;
-    color: $text;
+    color: $text-muted;
+    content-align: left middle;
+}
+
+#np-album-name {
+    width: auto;
+    height: auto;
+    color: $text-muted;
+    content-align: left middle;
 }
 
 #np-meta-sep {
-    width: auto;
-    margin: 0 1;
+    width: 3;
+    content-align: center middle;
+    color: $text-muted;
 }
 
-/* Center section: Progress with timestamps on edges */
+/* Center section */
 #np-progress-section {
-    width: 35%;
-    height: auto;
+    width: 30%;
+    height: 100%;
     layout: horizontal;
     align: center middle;
     padding: 0;
 }
 
-#np-progress-bar {
-    width: 1fr;
-    height: 1;
+#np-time-current {
+    width: auto;
+    min-width: 4;
+    color: $text;
     content-align: center middle;
-    margin: 0 1;
+    margin: 0;
 }
 
-#np-progress-bar #bar {
+#np-progress-bar {
+    width: 1fr;
+    height: auto;
+    min-height: 1;
+    margin-left:1;
+    padding:0;
+    content-align: center middle;
+    background: $surface;
+
+}
+
+#np-progress-bar > .bar {
     background: $surface;
 }
 
-#np-progress-bar #bar.bar--complete {
-    background: $success;
-}
-
-#np-time-current {
-    width: 5;
-    color: $text;
-    content-align: right middle;
-    margin-right: 0;
+#np-progress-bar > .bar.-complete {
+    background: $accent;
 }
 
 #np-time-total {
-    width: 5;
+    width: auto;
+    min-width: 4;
     color: $text-muted;
-    content-align: left middle;
-    margin-left: 0;
+    content-align: center middle;
+    margin: 0;
 }
 
-#np-progress-bar {
-    width: 1fr;
-    height: 1;
+/* Right section: Controls (25%) */
+#np-controls {
+    width: 30%;
+    height: 100%;
+    layout: horizontal;
+    align: right middle;
+    padding: 0 1;
+}
+
+/* Icon buttons */
+.icon-btn {
+    width: 3;
+    height: 3;
+    content-align: center middle;
+    color: $text;
+    background: transparent;
+    border: none;
+    text-style: none;
     margin: 0;
     padding: 0;
 }
 
-/* Right section: Controls */
-#np-controls {
-    width: 30%;
-    height: auto;
-    align: right middle;
-}
-
-#np-playback-controls {
-    height: auto;
-    layout: horizontal;
-    align: center middle;
-}
-
-/* Icon buttons - stable styling with background */
-.icon-btn {
-    width: 3;
-    height: 3;
-    padding: 0;
-    margin: 0 1;
-    content-align: center middle;
-    background: $surface;
-    color: $text;
-    border: none;
-    text-style: none;
+.icon-btn:hover {
+    color: $text-accent;
 }
 
 .icon-btn:focus {
-    background: $surface-lighten-1;
-    color: $text-accent;
+    color: $accent;
     text-style: bold;
-    border: solid $accent;
 }
 
 .icon-btn.active {
-    background: $surface;
     color: $success;
 }
 
 .icon-btn.track {
-    background: $surface;
     color: $warning;
 }
 
 .icon-btn.liked {
-    background: $surface;
     color: $error;
 }
 
-/* Clickable labels - underline only when focused via keyboard */
+/* Clickable labels */
 ClickableLabel:focus {
     text-style: underline;
     color: $text-accent;
 }
 
+/* Like button spacing */
 #np-like-btn {
-    margin-right: 2;
+    margin-right: 1;
 }
 
 /* Volume section */
 #np-volume-section {
-    height: auto;
+    width: auto;
+    height: 100%;
     layout: horizontal;
     align: center middle;
-    margin-left: 1;
-    min-width: 12;
+    margin-left: 2;
+    padding: 0;
 }
 
 #np-volume-icon {
-    width: auto;
-    color: $text-accent;
+    width: 3;
+    content-align: center middle;
+    color: $text-muted;
 }
 
 #np-volume-bar {
     width: 8;
     height: auto;
-    content-align: center middle;
+    min-height: 1;
     margin: 0 1;
-    color: $success;
+    padding: 0;
+    content-align: center middle;
+    background: $surface;
+    border: none;
+}
+
+#np-volume-bar > .bar {
+    background: $surface;
+}
+
+#np-volume-bar > .bar.-complete {
+    background: $success;
 }
 
 #np-volume-text {
