@@ -72,10 +72,10 @@ jobs:
             target: x86_64-apple-darwin
             artifact_name: neotune
             exe_suffix: ""
-        - os: macos-latest
-          target: aarch64-apple-darwin
-          artifact_name: neotune
-          exe_suffix: ""
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: neotune
+            exe_suffix: ""
 
     steps:
     - uses: actions/checkout@v4
@@ -97,10 +97,10 @@ jobs:
         name: librespot-${{ matrix.target }}
         path: ./src/network/
 
-      - name: Make librespot executable
-        run: chmod +x ./src/network/librespot
+    - name: Make librespot executable
+      run: chmod +x ./src/network/librespot
 
-      - name: Build executable with PyInstaller
+    - name: Build executable with PyInstaller
       run: |
         pyinstaller neotune.spec --clean --noconfirm
 
