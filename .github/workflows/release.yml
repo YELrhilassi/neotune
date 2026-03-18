@@ -107,7 +107,10 @@ jobs:
     - name: Package application
       run: |
         mkdir -p dist/${{ matrix.target }}
-        cp -r dist/neotune/* dist/${{ matrix.target }}/ || cp -r dist/neotune/* dist/${{ matrix.target }}\\ || xcopy /E /I dist\\neotune dist\\${{ matrix.target }}\\
+        if [ "${{ matrix.os }}" == "macos-latest" ] && [ -d "dist/NeoTune.app" ]; then
+          cp -r dist/NeoTune.app dist/${{ matrix.target }}/
+        fi
+        cp dist/neotune dist/${{ matrix.target }}/
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
