@@ -136,17 +136,32 @@ jobs:
       with:
         path: ./artifacts
 
+    - name: Debug artifacts
+      run: |
+        echo "Contents of ./artifacts:"
+        ls -la ./artifacts/
+        echo ""
+        echo "Looking for neotune artifacts:"
+        find ./artifacts -name "neotune*" -type d 2>/dev/null || echo "No neotune directories found"
+        find ./artifacts -name "neotune*" -type f 2>/dev/null || echo "No neotune files found"
+
     - name: Create release archives
       run: |
         mkdir -p releases
         for dir in ./artifacts/neotune-*/; do
-          target=$(basename "$dir" | sed 's/neotune-//')
-          if [[ "$target" == *"windows"* ]]; then
-            (cd "$dir" && zip -r "../../releases/neotune-${target}.zip" .)
-          else
-            tar -czf "releases/neotune-${target}.tar.gz" -C "$dir" .
+          if [ -d "$dir" ]; then
+            target=$(basename "$dir" | sed 's/neotune-//')
+            echo "Processing: $dir -> $target"
+            if [[ "$target" == *"windows"* ]] || [[ "$target" == *"pc-windows"* ]]; then
+              (cd "$dir" && zip -r "../../releases/neotune-${target}.zip" .)
+            else
+              tar -czf "releases/neotune-${target}.tar.gz" -C "$dir" .
+            fi
           fi
         done
+        echo ""
+        echo "Release archives created:"
+        ls -la releases/
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
