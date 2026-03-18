@@ -372,37 +372,84 @@ class TrackList(DataTable):
         display_name = f"{track_data.get('name', 'Unknown')} by {artists}"
         context_uri = self.store.get("last_active_context")
 
+        # Check if we're viewing tracks in a playlist/liked_songs context
+        pagination_state = self.store.get("pagination_state")
+        is_track_list_view = pagination_state and pagination_state.get("type") in [
+            "playlist",
+            "liked_songs",
+        ]
+
+        # Get playlist name for the "Play [Playlist]" option
+        playlist_name_for_option = None
+        if is_track_list_view:
+            if pagination_state.get("type") == "liked_songs":
+                playlist_name_for_option = "Liked Songs"
+            elif context_uri and ":playlist:" in context_uri:
+                playlist_id = context_uri.split(":")[-1]
+                playlists = self.store.get("playlists") or []
+                for pl in playlists:
+                    if pl.get("id") == playlist_id:
+                        playlist_name_for_option = pl.get("name", "Playlist")
+                        break
+
         def on_action_selected(action: str | None):
             if not action:
                 return
 
             def _worker():
                 if action == "play":
-                    if context_uri and context_uri not in ["liked_songs", "recently_played"]:
-                        if play_track(track_data["uri"], self.app, context_uri=context_uri):
+                    # Just play this single track - don't send all URIs
+                    if play_track(track_data["uri"], self.app):
+                        app_ref = cast("TerminalRenderer", self.app)
+                        if app_ref and hasattr(app_ref, "update_now_playing"):
+                            app_ref.call_from_thread(lambda: app_ref.update_now_playing(force=True))
+                elif action == "play_playlist":
+                    # Play the whole playlist/liked_songs from the selected track
+                    # Use context_uri with offset instead of sending all URIs (avoids HTTP 413)
+                    try:
+                        offset_pos = list(self.track_data_map.keys()).index(key)
+                    except:
+                        offset_pos = 0
+
+                    if (
+                        pagination_state
+                        and pagination_state.get("type") == "playlist"
+                        and context_uri
+                    ):
+                        # For playlists: use context_uri with offset
+                        if play_track(
+                            track_data["uri"],
+                            self.app,
+                            context_uri=context_uri,
+                            offset_position=offset_pos,
+                        ):
                             app_ref = cast("TerminalRenderer", self.app)
                             if app_ref and hasattr(app_ref, "update_now_playing"):
-
-                                def _update1():
-                                    app_ref.update_now_playing(force=True)
-
-                                app_ref.call_from_thread(_update1)
+                                app_ref.call_from_thread(
+                                    lambda: app_ref.update_now_playing(force=True)
+                                )
                     else:
-                        all_uris = [
-                            t.get("uri") for t in self.track_data_map.values() if t.get("uri")
-                        ]
+                        # For liked_songs: send URIs but limit to avoid HTTP 413
+                        # Only send tracks from current position onwards (up to 100)
+                        all_keys = list(self.track_data_map.keys())
                         try:
-                            offset_pos = list(self.track_data_map.keys()).index(key)
+                            start_idx = all_keys.index(key)
                         except:
-                            offset_pos = 0
-                        if play_track(all_uris, self.app, offset_position=offset_pos):
+                            start_idx = 0
+
+                        # Get URIs from current position onwards, limit to 100 to avoid payload too large
+                        uris_to_play = []
+                        for i in range(start_idx, min(start_idx + 100, len(all_keys))):
+                            track_item = self.track_data_map.get(all_keys[i])
+                            if track_item and track_item.get("uri"):
+                                uris_to_play.append(track_item["uri"])
+
+                        if uris_to_play and play_track(uris_to_play, self.app):
                             app_ref = cast("TerminalRenderer", self.app)
                             if app_ref and hasattr(app_ref, "update_now_playing"):
-
-                                def _update2():
-                                    app_ref.update_now_playing(force=True)
-
-                                app_ref.call_from_thread(_update2)
+                                app_ref.call_from_thread(
+                                    lambda: app_ref.update_now_playing(force=True)
+                                )
                 elif action == "radio":
                     start_track_radio(track_data["uri"], self.app)
                 elif action == "save":
@@ -429,7 +476,15 @@ class TrackList(DataTable):
 
             threading.Thread(target=_worker, daemon=True).start()
 
-        self.app.push_screen(TrackMenuPopup(track_data["uri"], display_name), on_action_selected)
+        self.app.push_screen(
+            TrackMenuPopup(
+                track_data["uri"],
+                display_name,
+                show_playlist_option=is_track_list_view,
+                playlist_name=playlist_name_for_option,
+            ),
+            on_action_selected,
+        )
 
     def get_highlighted_track_data(self) -> dict | None:
         if self.cursor_row is not None:

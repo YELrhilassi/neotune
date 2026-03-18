@@ -1,16 +1,53 @@
 /* Global Modal Backgrounds */
-DeviceSelector, AudioConfigSelector, CommandPopup, SearchPopup, TrackMenuPopup, CommandPrompt, TelescopePrompt, ConfirmationModal, LogModal {
+DeviceSelector, AudioConfigSelector, CommandPopup, SearchPopup, TrackMenuPopup, PlaylistPlayChoiceModal, CommandPrompt, TelescopePrompt, ConfirmationModal, LogModal {
     align: center middle;
     background: rgba(17, 17, 27, 0.85);
 }
 
 /* Shared Modal Card style */
-#confirmation-dialog, #command-dialog, #track-menu-dialog {
+#confirmation-dialog, #command-dialog, #track-menu-dialog, #playlist-play-choice-dialog {
     width: 60;
     height: auto;
     border: round $accent;
     background: $surface;
     padding: 1 2;
+}
+
+/* Playlist Play Choice Modal Styles */
+#playlist-play-choice-title {
+    text-align: center;
+    width: 100%;
+    color: $text;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#playlist-play-choice-subtitle {
+    text-align: center;
+    width: 100%;
+    color: $text-muted;
+    margin-bottom: 1;
+}
+
+#playlist-play-choice-list {
+    width: 100%;
+    height: 4;
+    border: round $primary;
+    background: $surface;
+    padding: 0;
+}
+
+#playlist-play-choice-list:focus {
+    border: round $accent;
+}
+
+#playlist-play-choice-list > .option-list--option {
+    padding: 0 1;
+}
+
+#playlist-play-choice-list > .option-list--option-highlighted {
+    background: $accent;
+    color: $background;
 }
 
 #device-dialog, #audio-config-dialog {

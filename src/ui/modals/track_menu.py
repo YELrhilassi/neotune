@@ -6,7 +6,14 @@ from src.ui.modals.base import BaseModal
 
 
 class TrackMenuPopup(BaseModal[str]):
-    def __init__(self, item_uri: str, item_name: str, show_go_to: bool = False):
+    def __init__(
+        self,
+        item_uri: str,
+        item_name: str,
+        show_go_to: bool = False,
+        show_playlist_option: bool = False,
+        playlist_name: str | None = None,
+    ):
         super().__init__()
         self.item_uri = item_uri
         self.item_name = item_name
@@ -30,6 +37,10 @@ class TrackMenuPopup(BaseModal[str]):
         self.actions = [
             (play_label, "play"),
         ]
+
+        # Show "Play [Playlist]" option when viewing tracks in a playlist/liked_songs
+        if is_track and show_playlist_option and playlist_name:
+            self.actions.append((f"Play {playlist_name}", "play_playlist"))
 
         if is_track:
             if self.show_go_to:
