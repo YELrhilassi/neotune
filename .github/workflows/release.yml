@@ -15,7 +15,7 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-20.04
             artifact_name: librespot
           - target: x86_64-apple-darwin
             os: macos-latest
@@ -33,13 +33,13 @@ jobs:
         targets: ${{ matrix.target }}
 
     - name: Install dependencies (Ubuntu)
-      if: matrix.os == 'ubuntu-latest'
+      if: matrix.os == 'ubuntu-20.04'
       run: |
         sudo apt-get update
         sudo apt-get install -y libpulse-dev libasound2-dev pkg-config
 
     - name: Build librespot (Linux)
-      if: matrix.os == 'ubuntu-latest'
+      if: matrix.os == 'ubuntu-20.04'
       working-directory: ./librespot_src
       run: |
         cargo build --release --target ${{ matrix.target }} --no-default-features --features "pulseaudio-backend with-libmdns rustls-tls-webpki-roots"
@@ -64,7 +64,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-20.04
             target: x86_64-unknown-linux-gnu
             artifact_name: neotune
             exe_suffix: ""
@@ -121,7 +121,7 @@ jobs:
   create-release:
     name: Create Release
     needs: [build-python]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     permissions:
       contents: write
 
