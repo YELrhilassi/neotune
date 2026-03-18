@@ -67,8 +67,10 @@ data_files = [
     ('lua', 'lua'),
 ] + lupa_datas
 
-# Binaries
-binaries = lupa_binaries
+# Binaries - include librespot
+binaries = [
+    ('src/network/librespot', 'src/network'),
+] + lupa_binaries
 
 # Base analysis configuration
 analysis_kwargs = {
@@ -78,6 +80,14 @@ analysis_kwargs = {
     'hiddenimports': [
         'spotipy',
         'textual',
+        'textual.widgets',
+        'textual.widgets._tab_pane',
+        'textual.widgets._tabs',
+        'textual.widgets._tab',
+        'textual.widgets._static',
+        'textual.widgets._button',
+        'textual.widgets._option_list',
+        'textual.widgets._rich_log',
         'keyring',
         'keyring.backends',
         'keyring.backends.OS_X',

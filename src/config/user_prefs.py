@@ -47,7 +47,7 @@ class UserPreferences:
             "page_down": "D",
         }
 
-        self.audio_config = {"backend": "pulseaudio", "device": "default", "bitrate": "320"}
+        self.audio_config = self._detect_best_audio_backend()
         self.special_playlists = []
 
         self._expose_api()
@@ -109,12 +109,48 @@ class UserPreferences:
         """
         self.lua.execute(setup_lua)
 
+    def _detect_best_audio_backend(self) -> dict:
+        """Auto-detect the best audio backend for the current system."""
+        import subprocess
+        import sys
+
+        # Check for PulseAudio
+        try:
+            subprocess.run(["pactl", "info"], capture_output=True, check=True, timeout=2)
+            return {"backend": "pulseaudio", "device": "default", "bitrate": "320"}
+        except (subprocess.SubprocessError, FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+        # Check for PipeWire (uses pulseaudio backend)
+        try:
+            result = subprocess.run(["pactl", "info"], capture_output=True, timeout=2)
+            if b"PipeWire" in result.stdout:
+                return {"backend": "pulseaudio", "device": "default", "bitrate": "320"}
+        except (subprocess.SubprocessError, FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+        # Check for ALSA
+        try:
+            subprocess.run(["aplay", "-l"], capture_output=True, check=True, timeout=2)
+            return {"backend": "alsa", "device": "default", "bitrate": "320"}
+        except (subprocess.SubprocessError, FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+        # macOS - use rodio (which uses CoreAudio)
+        if sys.platform == "darwin":
+            return {"backend": "rodio", "device": "default", "bitrate": "320"}
+
+        # Fallback to rodio (cross-platform)
+        return {"backend": "rodio", "device": "default", "bitrate": "320"}
+
     def load(self):
         # Ensure config dir exists
         os.makedirs(self.config_dir, exist_ok=True)
 
         # Internal lua files path
-        internal_lua_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "lua")
+        internal_lua_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "lua"
+        )
 
         # Always run the internal init first as base
         internal_init = os.path.join(internal_lua_dir, "init.lua")
@@ -131,6 +167,7 @@ class UserPreferences:
                 self.lua.require("init")
             except Exception as e:
                 import logging
+
                 logging.getLogger("neotune").error(f"Failed to load internal config: {e}")
 
         # Then let user override with their own init.lua if it exists
@@ -147,6 +184,7 @@ class UserPreferences:
                 self.lua.execute(f'dofile("{user_init}")')
             except Exception as e:
                 import logging
+
                 logging.getLogger("neotune").error(f"Failed to load user config: {e}")
         else:
             # If the user doesn't have an init.lua, let's create a stub for them so they know where to configure it
@@ -162,6 +200,7 @@ class UserPreferences:
 """)
             except Exception as e:
                 import logging
+
                 logging.getLogger("neotune").error(f"Failed to create stub: {e}")
 
         try:

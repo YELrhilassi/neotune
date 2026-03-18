@@ -43,7 +43,16 @@ class LocalPlayer:
         Returns:
             Path to librespot binary or "librespot" as fallback
         """
-        # Check local librespot first
+        import sys
+
+        # For PyInstaller bundles, check the MEIPASS temp directory first
+        if hasattr(sys, "_MEIPASS"):
+            meipass_librespot = Path(sys._MEIPASS) / "src" / "network" / "librespot"
+            if meipass_librespot.exists():
+                logger.debug(f"Found librespot in PyInstaller bundle: {meipass_librespot}")
+                return str(meipass_librespot)
+
+        # Check local librespot in development/source
         local_librespot = Path(__file__).parent / "librespot"
         if local_librespot.exists():
             return str(local_librespot)
@@ -212,6 +221,16 @@ class LocalPlayer:
                 except Exception:
                     pass
 
+            # Check if binary exists before trying to run
+            binary_path = Path(self.binary_path)
+            if not binary_path.exists():
+                raise FileNotFoundError(f"librespot binary not found at: {self.binary_path}")
+
+            # Ensure binary is executable
+            if not binary_path.stat().st_mode & 0o111:
+                logger.info(f"Making librespot executable: {self.binary_path}")
+                binary_path.chmod(binary_path.stat().st_mode | 0o755)
+
             self.process = subprocess.Popen(
                 cmd,
                 stdin=subprocess.DEVNULL,
@@ -219,6 +238,15 @@ class LocalPlayer:
                 stderr=self._log_file,
                 preexec_fn=preexec_fn if os.name == "posix" else None,
             )
+
+            # Wait briefly to ensure process started successfully
+            time.sleep(0.5)
+
+            # Check if process is actually running
+            if self.process.poll() is not None:
+                raise RuntimeError(
+                    f"librespot process exited immediately with code {self.process.poll()}"
+                )
 
             # Use a flag to ensure we only register once
             if not hasattr(self, "_atexit_registered"):

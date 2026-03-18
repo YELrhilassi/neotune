@@ -148,7 +148,15 @@ if __name__ == "__main__":
     if player and network:
         prefs = Container.resolve(UserPreferences)
         token = network.get_access_token()
+        print(f"[DEBUG] Starting librespot with token: {'Yes' if token else 'No'}")
+        print(f"[DEBUG] Audio config: {prefs.audio_config}")
+        print(f"[DEBUG] librespot binary path: {player.binary_path}")
         player.start(audio_config=prefs.audio_config, access_token=token)
+        time.sleep(1)  # Give librespot time to start
+        if player.is_running():
+            print("[INFO] librespot process started successfully")
+        else:
+            print("[ERROR] librespot process failed to start")
 
     app = TerminalRenderer()
     try:

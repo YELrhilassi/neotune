@@ -41,7 +41,20 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y libasound2-dev pkg-config
 
-    - name: Build librespot
+    - name: Build librespot (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      working-directory: ./librespot_src
+      run: |
+        cargo build --release --target ${{ matrix.target }} --no-default-features --features "pulseaudio-backend with-libmdns rustls-tls-webpki-roots"
+
+    - name: Build librespot (macOS)
+      if: matrix.os == 'macos-latest'
+      working-directory: ./librespot_src
+      run: |
+        cargo build --release --target ${{ matrix.target }} --no-default-features --features "rodio-backend with-libmdns rustls-tls-webpki-roots"
+
+    - name: Build librespot (Windows)
+      if: matrix.os == 'windows-latest'
       working-directory: ./librespot_src
       run: |
         cargo build --release --target ${{ matrix.target }} --no-default-features --features "rodio-backend with-libmdns rustls-tls-webpki-roots"

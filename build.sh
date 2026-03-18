@@ -68,15 +68,15 @@ if ! command -v cargo &> /dev/null; then
     exit 1
 fi
 
-# Build with minimal features for smaller binary
+# Build with pulseaudio support on Linux, rodio on macOS
 if [ "$OS" = "darwin" ]; then
     # macOS - use rodio which has better compatibility
     cargo build --release --no-default-features \
         --features "rodio-backend with-libmdns rustls-tls-webpki-roots"
 else
-    # Linux - use rodio for better portability
+    # Linux - use pulseaudio for better device/DAC support
     cargo build --release --no-default-features \
-        --features "rodio-backend with-libmdns rustls-tls-webpki-roots"
+        --features "pulseaudio-backend with-libmdns rustls-tls-webpki-roots"
 fi
 
 cd ..
